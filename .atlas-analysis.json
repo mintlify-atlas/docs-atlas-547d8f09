@@ -1,0 +1,121 @@
+{
+  "projectType": "infrastructure",
+  "projectName": "XLRS",
+  "projectDescription": "A 2.4GHz radio-based remote control system for FPV drones using SX1280 modules and RP2040 boards.",
+  "theme": "aspen",
+  "primaryColor": "#FF6B35",
+  "lightColor": "#F7931E",
+  "darkColor": "#C41E3A",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "hardware-requirements"
+            ]
+          },
+          {
+            "group": "Build & Deploy",
+            "pages": [
+              "build/platformio-setup",
+              "build/building-firmware",
+              "build/flashing-devices"
+            ]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "architecture/overview",
+              "architecture/communication-flow",
+              "architecture/components"
+            ]
+          },
+          {
+            "group": "Hardware Guides",
+            "pages": [
+              "hardware/tx-module",
+              "hardware/rx-module",
+              "hardware/rc-board",
+              "hardware/wiring"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/radio-settings",
+              "configuration/uart-protocol",
+              "configuration/build-flags",
+              "configuration/pairing"
+            ]
+          },
+          {
+            "group": "Troubleshooting",
+            "pages": [
+              "troubleshooting/common-issues",
+              "troubleshooting/connection-problems",
+              "troubleshooting/debugging"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Libraries",
+            "pages": [
+              "api/sx128x-link",
+              "api/crsf",
+              "api/uart-protocol",
+              "api/security",
+              "api/protocol"
+            ]
+          },
+          {
+            "group": "Message Types",
+            "pages": [
+              "api/radio-messages",
+              "api/uart-messages",
+              "api/crsf-frames"
+            ]
+          },
+          {
+            "group": "Data Structures",
+            "pages": [
+              "api/channel-data",
+              "api/telemetry",
+              "api/status"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "2.4GHz SX1280 radio with FLRC modulation for low latency",
+    "Secure pairing with AES-128 encryption and HMAC authentication",
+    "CRSF protocol output compatible with Betaflight and ELRS",
+    "High-speed UART protocol (420kbps) between RC board and TX module",
+    "Bidirectional telemetry for battery monitoring and link quality",
+    "Configurable radio parameters via build flags",
+    "Split architecture: RC board, TX module, and RX module"
+  ],
+  "publicApiSurface": [
+    "SX128xLink::begin()",
+    "SX128xLink::send()",
+    "SX128xLink::receive()",
+    "CRSF::sendRCChannels()",
+    "UARTProtocol::sendChannels()",
+    "UARTProtocol::sendTelemetry()",
+    "UARTProtocol::sendCommand()",
+    "Security::encrypt()",
+    "Security::decrypt()",
+    "Protocol::handlePairing()",
+    "Protocol::handleSync()"
+  ]
+}
