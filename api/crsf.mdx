@@ -1,0 +1,240 @@
+---
+title: 'CRSF'
+description: 'Crossfire Serial Protocol implementation for RC channel transmission'
+---
+
+## Overview
+
+The `CRSF` class implements the Crossfire Serial Protocol (CRSF) used for transmitting RC channel data to flight controllers. CRSF is a high-speed, low-latency protocol commonly used in FPV drones.
+
+## Class Definition
+
+Location: `lib/CRSF/CRSF.h`
+
+```cpp
+class CRSF {
+public:
+    CRSF(HardwareSerial* ser, uint8_t tx, uint8_t rx);
+    void begin();
+    void sendChannels(uint16_t channels[], uint8_t numChannels);
+    void sendRCChannels(uint16_t channels[], uint8_t numChannels = 8);
+};
+```
+
+## Constants
+
+```cpp
+#define CRSF_ADDRESS 0xEE
+#define CRSF_TYPE_RC_CHANNELS 0x16
+#define CRSF_MAX_CHANNELS 16
+#define CRSF_BAUD_RATE 420000  // CRSF standard baud rate
+```
+
+## Constructor
+
+### CRSF()
+
+Creates a CRSF instance for the specified serial port and pins.
+
+```cpp
+CRSF(HardwareSerial* ser, uint8_t tx, uint8_t rx);
+```
+
+<ParamField path="ser" type="HardwareSerial*">
+  Pointer to hardware serial port (e.g., `&Serial2`)
+</ParamField>
+
+<ParamField path="tx" type="uint8_t">
+  GPIO pin number for TX
+</ParamField>
+
+<ParamField path="rx" type="uint8_t">
+  GPIO pin number for RX
+</ParamField>
+
+**Example:**
+
+```cpp
+// Define CRSF pins
+#define CRSF_TX_PIN 8
+#define CRSF_RX_PIN 9
+
+// Create CRSF instance
+CRSF crsf(&Serial2, CRSF_TX_PIN, CRSF_RX_PIN);
+```
+
+## Methods
+
+### begin()
+
+Initializes the CRSF serial port with the standard baud rate (420000).
+
+```cpp
+void begin();
+```
+
+**Example:**
+
+```cpp
+crsf.begin();
+Serial.println("CRSF initialized");
+```
+
+### sendChannels()
+
+Transmits RC channel values over the CRSF protocol.
+
+```cpp
+void sendChannels(uint16_t channels[], uint8_t numChannels);
+```
+
+<ParamField path="channels" type="uint16_t[]">
+  Array of channel values (1000-2000 µs standard RC range)
+</ParamField>
+
+<ParamField path="numChannels" type="uint8_t">
+  Number of channels to send (1-16)
+</ParamField>
+
+**Example:**
+
+```cpp
+uint16_t channels[8] = {1500, 1500, 1000, 1500, 1500, 1500, 1500, 1500};
+crsf.sendChannels(channels, 8);
+```
+
+### sendRCChannels()
+
+Transmits RC channel values with a default of 8 channels.
+
+```cpp
+void sendRCChannels(uint16_t channels[], uint8_t numChannels = 8);
+```
+
+<ParamField path="channels" type="uint16_t[]">
+  Array of channel values (1000-2000 µs)
+</ParamField>
+
+<ParamField path="numChannels" type="uint8_t" default="8">
+  Number of channels to send (defaults to 8)
+</ParamField>
+
+**Example:**
+
+```cpp
+// Send default 8 channels
+crsf.sendRCChannels(channels);
+
+// Send specific number of channels
+crsf.sendRCChannels(channels, 12);
+```
+
+## CRC Calculation
+
+The class includes internal CRC8 calculation for CRSF frame integrity:
+
+```cpp
+uint8_t crc8(const uint8_t* data, uint8_t len);
+```
+
+This is handled automatically by the send methods.
+
+## Usage Example
+
+From `src/rx_main_sx128x.cpp:214`:
+
+### Complete RX Implementation
+
+```cpp
+// Initialize CRSF
+Serial.println("Initializing CRSF...");
+Serial2.setTX(CRSF_TX_PIN);
+Serial2.setRX(CRSF_RX_PIN);
+crsf.begin(CRSF_BAUDRATE);
+crsf.onPacketBattery = onBatteryTelemetry;
+crsf.onPacketLinkStatistics = onLinkStats;
+Serial.print("CRSF on Serial2: TX=GP");
+Serial.print(CRSF_TX_PIN);
+Serial.print(", RX=GP");
+Serial.println(CRSF_RX_PIN);
+```
+
+### Sending Channels at 50Hz
+
+From `src/rx_main_sx128x.cpp:388`:
+
+```cpp
+// Send CRSF at 50Hz
+static unsigned long lastCRSF = 0;
+if (millis() - lastCRSF >= 20) {
+    lastCRSF = millis();
+
+    crsf_channels_t crsfChannels = {0};
+    crsfChannels.ch0 = map(channels[0], 1000, 2000, 
+                           CRSF_CHANNEL_VALUE_1000, 
+                           CRSF_CHANNEL_VALUE_2000);  // Aileron
+    crsfChannels.ch1 = map(channels[1], 1000, 2000, 
+                           CRSF_CHANNEL_VALUE_1000, 
+                           CRSF_CHANNEL_VALUE_2000);  // Elevator
+    crsfChannels.ch2 = map(channels[2], 1000, 2000, 
+                           CRSF_CHANNEL_VALUE_1000, 
+                           CRSF_CHANNEL_VALUE_2000);  // Rudder
+    crsfChannels.ch3 = map(channels[3], 1000, 2000, 
+                           CRSF_CHANNEL_VALUE_1000, 
+                           CRSF_CHANNEL_VALUE_2000);  // Throttle
+    crsfChannels.ch4 = map(channels[4], 1000, 2000, 
+                           CRSF_CHANNEL_VALUE_1000, 
+                           CRSF_CHANNEL_VALUE_2000);  // Aux1
+    crsfChannels.ch5 = map(channels[5], 1000, 2000, 
+                           CRSF_CHANNEL_VALUE_1000, 
+                           CRSF_CHANNEL_VALUE_2000);  // Aux2
+    crsfChannels.ch6 = map(channels[6], 1000, 2000, 
+                           CRSF_CHANNEL_VALUE_1000, 
+                           CRSF_CHANNEL_VALUE_2000);  // Aux3
+    crsfChannels.ch7 = map(channels[7], 1000, 2000, 
+                           CRSF_CHANNEL_VALUE_1000, 
+                           CRSF_CHANNEL_VALUE_2000);  // Aux4
+
+    uint16_t center = CRSF_CHANNEL_VALUE_MID;
+    crsfChannels.ch8 = center;
+    crsfChannels.ch9 = center;
+    crsfChannels.ch10 = center;
+    crsfChannels.ch11 = center;
+    crsfChannels.ch12 = center;
+    crsfChannels.ch13 = center;
+    crsfChannels.ch14 = center;
+    crsfChannels.ch15 = center;
+
+    crsf.queuePacket(
+        CRSF_ADDRESS_FLIGHT_CONTROLLER,
+        CRSF_FRAMETYPE_RC_CHANNELS_PACKED,
+        &crsfChannels,
+        CRSF_FRAME_RC_CHANNELS_PAYLOAD_SIZE
+    );
+}
+```
+
+## Channel Mapping
+
+Standard RC channel mapping:
+
+| Channel | Function | Typical Range |
+|---------|----------|---------------|
+| CH1 | Aileron (Roll) | 1000-2000 µs |
+| CH2 | Elevator (Pitch) | 1000-2000 µs |
+| CH3 | Throttle | 1000-2000 µs |
+| CH4 | Rudder (Yaw) | 1000-2000 µs |
+| CH5-8 | Aux switches | 1000-2000 µs |
+
+## Protocol Details
+
+- **Baud Rate:** 420,000 bps
+- **Address:** 0xEE (Flight Controller)
+- **Frame Type:** 0x16 (RC Channels)
+- **Max Channels:** 16
+- **CRC:** 8-bit polynomial checksum
+
+## See Also
+
+- [UARTProtocol](/api/uart-protocol) - Custom UART protocol for RC/TX communication
+- [Protocol](/api/protocol) - Radio packet encoding/decoding

@@ -1,0 +1,320 @@
+---
+title: Connection Problems
+description: Troubleshooting TX/RX connection issues, pairing failures, and range problems
+---
+
+This page addresses issues related to establishing and maintaining connections between TX and RX modules.
+
+## Understanding Connection States
+
+XLRS uses a connection state machine with five states:
+
+<CardGroup cols={2}>
+  <Card title="DISCONNECTED" icon="circle-xmark">
+    No pairing exists. Waiting for pairing mode to be activated.
+  </Card>
+  <Card title="PAIRING" icon="arrows-rotate">
+    Actively exchanging pairing packets with binding UID validation.
+  </Card>
+  <Card title="CONNECTING" icon="link">
+    Paired devices establishing connection via SYNC handshake.
+  </Card>
+  <Card title="CONNECTED" icon="circle-check">
+    Active link established. Channel data is being transmitted.
+  </Card>
+  <Card title="LOST" icon="wifi-slash">
+    Connection timeout detected. Attempting to reconnect.
+  </Card>
+</CardGroup>
+
+You can monitor the current state in the serial output:
+```
+[STATE] Current: CONNECTED (RSSI: -65, SNR: 9.5)
+```
+
+## Pairing Failures
+
+### RX Won't Enter Pairing Mode
+
+<Accordion title="Manual Pairing Mode Entry">
+  On the RX module:
+  1. Hold the **BOOTSEL** button for **5 seconds**
+  2. Serial monitor should show:
+     ```
+     *** PAIRING MODE ACTIVE ***
+     Waiting for TX to send pairing key...
+     Timeout in 60 seconds
+     ```
+
+  If pairing mode doesn't activate:
+  - Verify you're holding BOOTSEL (not RESET)
+  - Check serial output for button press detection:
+     ```
+     [PAIR] BOOTSEL pressed (waiting for hold to enter pairing)
+     [PAIR] BOOTSEL hold detected, entering pairing mode
+     ```
+  - If no button messages appear, BOOTSEL reading may be faulty (hardware issue)
+</Accordion>
+
+<Accordion title="Auto-Pairing Timeout">
+  RX can auto-enter pairing mode after a timeout if not paired. Check your build configuration:
+  ```ini
+  [env:rx_sx128x]
+  build_flags =
+    -DAUTO_PAIR_TIMEOUT_SEC=5  ; Auto-pair after 5 seconds
+  ```
+
+  - Set to `0` to disable auto-pairing
+  - Maximum timeout: 120 seconds
+  - Default in `rx_sx128x`: 5 seconds
+
+  Serial output when auto-pairing triggers:
+  ```
+  [PAIR] Auto-entering pairing mode (timeout reached)
+  ```
+</Accordion>
+
+### Binding UID Mismatch
+
+Most common pairing failure cause:
+
+<Accordion title="Verify Binding UID on Both Devices">
+  At startup, both TX and RX show their binding UID:
+  ```
+  Binding UID: A1B2C3D4E5F60708 (from phrase: FPV_BIND_2024)
+  ```
+
+  **The UID must match exactly.**
+
+  If RX rejects pairing:
+  ```
+  [RX] Pairing rejected - binding UID mismatch!
+  [RX] Received UID: XXXXXXXXXXXXXXXX
+  ```
+
+  <Warning>
+    Different binding phrases produce different UIDs. Both TX and RX must be built with identical `DEFAULT_BINDING_PHRASE` values.
+  </Warning>
+</Accordion>
+
+<Accordion title="Fix Binding Phrase Mismatch">
+  In `platformio.ini`, ensure **both** `tx_sx128x` and `rx_sx128x` environments have the same phrase:
+  ```ini
+  [env:tx_sx128x]
+  build_flags =
+    -DDEFAULT_BINDING_PHRASE=\"YourPhrase\"
+
+  [env:rx_sx128x]
+  build_flags =
+    -DDEFAULT_BINDING_PHRASE=\"YourPhrase\"
+  ```
+
+  Rebuild and upload to both devices.
+</Accordion>
+
+### TX Not Sending Pairing Packets
+
+<Accordion title="Verify TX Pairing Mode">
+  TX serial output should show:
+  ```
+  Not paired - entering pairing mode
+  Will send pairing packets with binding UID
+  [STATE] DISCONNECTED -> PAIRING
+  [TX] Sent pairing packet (UID + TX ID + key), UID: XXXXXXXXXXXXXXXX
+  ```
+
+  If TX doesn't send pairing packets:
+  - Check radio initialization: Look for "SX128x ready"
+  - Verify binding UID exists:
+    ```
+    [TX] ERROR: No binding UID - cannot pair!
+    ```
+  - If no binding UID, rebuild with proper `DEFAULT_BINDING_PHRASE`
+</Accordion>
+
+<Accordion title="Check Pairing Packet Rate">
+  TX sends pairing packets every 500ms when in pairing mode.
+
+  If packets aren't being sent:
+  - Radio may not be ready (check "SX128x ready" message)
+  - TX may think it's already paired (check for "Already paired" message)
+  - Security initialization may have failed
+</Accordion>
+
+### Pairing Times Out
+
+<Accordion title="Extend Pairing Timeout">
+  Default pairing window is **60 seconds**. If this isn't enough:
+  ```cpp
+  // In lib/Protocol/pairing.h
+  #define PAIRING_MODE_TIMEOUT_MS 120000  // Extend to 120 seconds
+  ```
+
+  Rebuild and upload.
+</Accordion>
+
+## Connection Won't Establish
+
+### Stuck in CONNECTING State
+
+<Accordion title="SYNC Handshake Failure">
+  After pairing, devices exchange SYNC packets to establish connection.
+
+  **TX side - check for:**
+  ```
+  [STATE] PAIRING -> CONNECTING
+  ```
+  Then should transition to:
+  ```
+  [STATE] CONNECTING -> CONNECTED
+  ```
+
+  If stuck in CONNECTING:
+  - TX sends SYNC packets periodically
+  - RX must respond with SYNC_ACK
+  - If no SYNC_ACK received, connection won't complete
+
+  **Debug sync reception on RX:**
+  ```
+  [SYNC] RX saw MSG_SYNC pktLen=33 payloadLen=32
+  ```
+</Accordion>
+
+<Accordion title="Check Pairing Key">
+  Both devices must have the same pairing key stored.
+
+  After successful pairing, both TX and RX show:
+  ```
+  [TX] Pairing key fingerprint: A1B2C3D4
+  [RX] Pairing key fingerprint: A1B2C3D4
+  ```
+
+  Fingerprints **must match**. If different:
+  - Clear pairing by re-flashing both devices
+  - Re-pair from scratch
+</Accordion>
+
+<Accordion title="Device ID Validation">
+  SYNC_ACK packets include device IDs for validation.
+
+  If you see:
+  ```
+  [SYNC] RX ID mismatch in SYNC_ACK (len=X) src=XXXXXXXX expected=YYYYYYYY
+  ```
+
+  Device IDs are out of sync:
+  1. Re-flash both TX and RX
+  2. Clear EEPROM (flashing usually does this)
+  3. Re-pair devices
+</Accordion>
+
+## Connection Drops / LOST State
+
+### Understanding Sync ACK Hysteresis
+
+XLRS uses hysteresis to prevent false disconnects:
+
+<Accordion title="How Hysteresis Works">
+  - TX sends periodic SYNC packets
+  - RX responds with SYNC_ACK
+  - TX counts missed SYNC_ACKs
+  - Connection marked LOST only after **3 consecutive misses**
+
+  This prevents false disconnects from timing collisions (half-duplex radio).
+
+  ```cpp
+  // In tx_main_sx128x.cpp
+  static const uint8_t SYNC_ACK_MISSES_BEFORE_LOST = 3;
+  ```
+</Accordion>
+
+<Accordion title="Monitor Sync ACK Misses">
+  TX serial output shows:
+  ```
+  [STATE] CONNECTED -> LOST (missed sync ACKs)
+  ```
+
+  If this happens frequently:
+  - Signal is too weak (check RSSI, should be > -90 dBm)
+  - Interference is disrupting packets
+  - Antenna connections are loose
+  - RX may be powered off or crashed
+</Accordion>
+
+### Range Issues
+
+<Accordion title="Check Signal Strength">
+  Good connection typically requires:
+  - **RSSI**: > -90 dBm
+  - **SNR**: > 5 dB
+
+  Monitor in serial output:
+  ```
+  [RX] Channels: 1500 1500 ... Seq: 123 RSSI: -65 SNR: 9.5
+  ```
+
+  If RSSI < -100 dBm or SNR < 0 dB:
+  - Range is too far
+  - Obstacles blocking signal
+  - Antenna misalignment
+  - Antenna damage
+</Accordion>
+
+<Accordion title="Increase Transmission Power">
+  Default output power: **10 dBm**
+
+  Increase to maximum (13 dBm) in `platformio.ini`:
+  ```ini
+  build_flags =
+    -DSX128X_OUTPUT_POWER_DBM=13
+  ```
+
+  Apply to both TX and RX environments.
+
+  <Warning>
+    Higher power increases range but also increases power consumption and heat. Ensure adequate cooling if using 13 dBm continuously.
+  </Warning>
+</Accordion>
+
+<Accordion title="Optimize Radio Configuration">
+  For maximum range, adjust FLRC parameters:
+  ```ini
+  build_flags =
+    -DSX128X_FLRC_BR_KBPS=650    ; Lower bitrate = better range
+    -DSX128X_FLRC_CR=2            ; 1/2 coding rate (more robust)
+  ```
+
+  Trade-off: Lower bitrate increases latency slightly.
+</Accordion>
+
+## Half-Duplex Timing Issues
+
+<Accordion title="Understanding Half-Duplex Behavior">
+  SX1280 radio cannot transmit and receive simultaneously.
+
+  **TX timing strategy:**
+  - Sends channel data continuously
+  - Briefly pauses after sending SYNC packets (10ms window)
+  - This allows RX time to send SYNC_ACK
+
+  **If sync ACKs are frequently missed:**
+  - Increase listening window:
+    ```cpp
+    // In tx_main_sx128x.cpp
+    static const unsigned long SYNC_ACK_LISTEN_WINDOW_MS = 20;  // Increase from 10ms
+    ```
+</Accordion>
+
+<Accordion title="Packet Collision Detection">
+  Check for sync parsing failures:
+  ```
+  [SYNC] parseSyncAck FAILED payloadLen=X keyLoaded=Y
+  ```
+
+  This indicates:
+  - Packet corruption (weak signal)
+  - HMAC validation failure (wrong key)
+  - Device ID mismatch
+
+  Usually resolves itself due to hysteresis. Persistent failures indicate deeper issues.
+</Accordion>

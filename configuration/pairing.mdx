@@ -1,0 +1,519 @@
+---
+title: Pairing Process
+description: Binding phrase setup, pairing process, and security settings for XLRS
+---
+
+XLRS uses a secure binding phrase-based pairing system to establish trusted communication between TX and RX modules. This ensures that only paired devices can communicate, preventing interference from other systems and providing encryption for channel data.
+
+## Pairing Overview
+
+The pairing process involves:
+
+1. **Binding Phrase Configuration**: Both TX and RX share the same binding phrase
+2. **Binding UID Generation**: The binding phrase is hashed to create a unique 8-byte identifier
+3. **Pairing Exchange**: TX and RX exchange binding UIDs and device IDs
+4. **Key Generation**: A shared encryption key is generated and stored in EEPROM
+5. **Persistent Pairing**: Devices automatically reconnect on subsequent power-ups
+
+<Note>
+After successful pairing, the binding phrase is no longer needed for reconnection. The pairing is stored in EEPROM and persists across power cycles.
+</Note>
+
+## Binding Phrase Configuration
+
+### Default Binding Phrase
+
+The default binding phrase is defined in `lib/Security/Security.h`:
+
+```c
+#define DEFAULT_BINDING_PHRASE "FPV-DEFAULT-2024"
+```
+
+<Warning>
+Always change the default binding phrase for production use to prevent interference from other XLRS systems!
+</Warning>
+
+### Custom Binding Phrase
+
+To set a custom binding phrase, add the build flag in `platformio.ini`:
+
+<ParamField path="DEFAULT_BINDING_PHRASE" type="string" default="FPV-DEFAULT-2024">
+  Custom binding phrase for pairing. Both TX and RX must use the same phrase.
+  
+  ```ini platformio.ini
+  [env:tx_sx128x]
+  build_flags = 
+      -DDEFAULT_BINDING_PHRASE=\"MyDrone-2024\"
+  
+  [env:rx_sx128x]
+  build_flags = 
+      -DDEFAULT_BINDING_PHRASE=\"MyDrone-2024\"
+  ```
+  
+  <Accordion title="Binding Phrase Best Practices">
+    - Use a unique phrase for each system to avoid interference
+    - Make it memorable but not easily guessable
+    - Use alphanumeric characters (8-32 characters recommended)
+    - Both TX and RX must have identical binding phrases
+    - Change it if you suspect unauthorized access
+    
+    **Good examples**:
+    - `"MyRacingQuad-2024"`
+    - `"FPVDrone-TX1-RX1"`
+    - `"SecureLink-ABC123"`
+    
+    **Avoid**:
+    - `"1234"` (too simple)
+    - `"password"` (too common)
+    - Default phrases (everyone uses them)
+  </Accordion>
+</ParamField>
+
+### Binding UID
+
+The binding phrase is hashed using SHA-256 to produce an 8-byte **binding UID**:
+
+```c
+// In Security class
+bool generateBindingUID(const char* bindingPhrase);
+bool getBindingUID(uint8_t* uid);  // 8 bytes
+bool verifyBindingUID(const uint8_t* uid);
+```
+
+This UID is:
+- Exchanged during pairing to verify both devices share the same binding phrase
+- Stored in EEPROM at `BINDING_UID_ADDR` (offset 160)
+- Never directly transmitted after initial pairing
+
+## Pairing Process
+
+### Method 1: Automatic Pairing (Recommended)
+
+The RX module can automatically enter pairing mode if not paired:
+
+<ParamField path="AUTO_PAIR_TIMEOUT_SEC" type="int" default="5">
+  Timeout in seconds before RX automatically enters pairing mode when unpaired.
+  
+  ```ini platformio.ini
+  [env:rx_sx128x]
+  build_flags = 
+      -DAUTO_PAIR_TIMEOUT_SEC=5
+  ```
+  
+  - Set to `0` to disable auto-pairing
+  - Maximum: 120 seconds
+  - Default: 5 seconds (in `rx_sx128x` environment)
+</ParamField>
+
+**Steps**:
+1. Power on RX module (must not be paired yet)
+2. RX waits for AUTO_PAIR_TIMEOUT_SEC, then enters pairing mode
+3. RX remains in pairing mode for 60 seconds
+4. Power on TX module
+5. TX automatically sends pairing packets
+6. RX verifies binding UID and sends pairing ACK
+7. Both devices exchange device IDs and generate shared key
+8. Pairing complete! Devices store pairing in EEPROM
+
+### Method 2: Manual Pairing (BOOTSEL Button)
+
+You can manually trigger pairing mode on the RX:
+
+**Steps**:
+1. Power on RX module
+2. **Hold BOOTSEL button for 5 seconds**
+3. RX enters pairing mode for 60 seconds
+4. Power on TX module or send pairing command
+5. Pairing exchange occurs (same as automatic method)
+6. Pairing complete!
+
+<Accordion title="BOOTSEL Button Technical Details">
+  The BOOTSEL button is read using RP2040-specific code:
+  
+  ```cpp
+  #define BOOTSEL_HOLD_TIME_MS 5000  // 5 seconds
+  
+  // Check if BOOTSEL button is pressed
+  bool getBootselButton() {
+      #if defined(ARDUINO_ARCH_RP2040)
+          return (sio_hw->gpio_in & (1 << 23)) == 0;
+      #else
+          return false;
+      #endif
+  }
+  ```
+  
+  The RX firmware monitors the button state and enters pairing mode when held for 5 seconds.
+</Accordion>
+
+### Method 3: UART Command (via RC Board)
+
+The RC board can command the TX module to enter pairing mode:
+
+```cpp
+// RC board code
+uart.sendCommand(UART_MSG_CMD_PAIR);
+```
+
+**Steps**:
+1. Ensure RX is in pairing mode (auto or manual)
+2. RC board sends `UART_MSG_CMD_PAIR` to TX module
+3. TX enters pairing mode and sends pairing packets
+4. Pairing exchange occurs
+5. TX sends ACK to RC board on success
+
+## Pairing Message Format
+
+### MSG_PAIRING (0x03)
+
+**Direction**: TX → RX
+
+**Payload** (16 bytes):
+```c
++------------------+------------------+
+|  Binding UID     |  TX Device ID    |
+|    (8 bytes)     |    (8 bytes)     |
++------------------+------------------+
+```
+
+- **Binding UID**: SHA-256 hash of binding phrase (first 8 bytes)
+- **TX Device ID**: Unique 8-byte identifier from RP2040 silicon
+
+### MSG_PAIRING_ACK (0x04)
+
+**Direction**: RX → TX
+
+**Payload** (8 bytes):
+```c
++------------------+
+|  RX Device ID    |
+|    (8 bytes)     |
++------------------+
+```
+
+- **RX Device ID**: Unique 8-byte identifier from RP2040 silicon
+
+<Accordion title="Device ID Generation">
+  Device IDs are generated from the RP2040's unique silicon ID:
+  
+  ```cpp
+  bool loadDeviceIdFromSilicon() {
+      #if defined(ARDUINO_ARCH_RP2040)
+          pico_unique_board_id_t board_id;
+          pico_get_unique_board_id(&board_id);
+          memcpy(_deviceId, board_id.id, DEVICE_ID_SIZE);
+          return true;
+      #endif
+      return false;
+  }
+  ```
+  
+  Each RP2040 chip has a unique 8-byte ID that cannot be changed, ensuring device IDs are globally unique.
+</Accordion>
+
+## Pairing State Machine
+
+### RX Side States
+
+```
+UNPAIRED (no stored pairing)
+    ↓
+    ├─→ [AUTO_PAIR_TIMEOUT_SEC expires] → PAIRING_MODE
+    └─→ [BOOTSEL held 5s] → PAIRING_MODE
+
+PAIRING_MODE (listening for pairing packets, 60s timeout)
+    ↓
+    ├─→ [Receive MSG_PAIRING with valid binding UID]
+    |       → Verify UID
+    |       → Send MSG_PAIRING_ACK with RX device ID
+    |       → Generate and store shared key
+    |       → PAIRED
+    |
+    └─→ [60s timeout or invalid UID] → UNPAIRED
+
+PAIRED (stored pairing exists)
+    ↓
+    └─→ Wait for connection from paired TX
+```
+
+### TX Side States
+
+```
+UNPAIRED (no stored pairing)
+    ↓
+    └─→ PAIRING_MODE (send pairing packets every 500ms)
+
+PAIRING_MODE (sending pairing packets)
+    ↓
+    ├─→ [Receive MSG_PAIRING_ACK with RX device ID]
+    |       → Store RX device ID
+    |       → Generate and store shared key
+    |       → PAIRED
+    |
+    └─→ [Manual exit or timeout] → UNPAIRED
+
+PAIRED (stored pairing exists)
+    ↓
+    └─→ CONNECTING (send SYNC packets to paired RX)
+```
+
+## Security Features
+
+### Pairing Key Storage
+
+After successful pairing, the following data is stored in EEPROM:
+
+| Data | Address | Size | Description |
+|------|---------|------|-------------|
+| Security Magic | 120 | 4 bytes | Magic value (0x58554352) |
+| Pairing Key | 128 | 16 bytes | AES-128 shared encryption key |
+| Device ID | 144 | 8 bytes | This device's unique ID |
+| Paired Device ID | 152 | 8 bytes | Paired device's ID |
+| Binding UID | 160 | 8 bytes | Hashed binding phrase |
+
+<Accordion title="EEPROM Structure">
+  ```c
+  #define SECURITY_MAGIC_VALUE 0x58554352UL  // "TECR"
+  #define SECURITY_MAGIC_ADDR 120
+  #define PAIRING_KEY_ADDR 128
+  #define DEVICE_ID_ADDR 144
+  #define PAIRED_DEVICE_ID_ADDR 152
+  #define BINDING_UID_ADDR 160
+  
+  // Total: 44 bytes (120-163)
+  ```
+  
+  The security magic value is used to invalidate stored pairing data when the security structure changes.
+</Accordion>
+
+### Encryption and Authentication
+
+After pairing, all channel data is protected:
+
+- **AES-128 Encryption**: Channel data is encrypted with the shared pairing key
+- **HMAC-SHA256**: Truncated to 4 bytes for message authentication
+- **Sequence Numbers**: 16-bit counter to prevent replay attacks
+- **Device ID Validation**: Each message includes sender's device ID
+
+**MSG_CHANNELS frame format** (after pairing):
+```
++------+------------+-------------+-----------+------+
+| Type | Device ID  | Encrypted   | Sequence  | HMAC |
+|      | (8 bytes)  | Channels    | (2 bytes) | (4B) |
+|      |            | (16 bytes)  |           |      |
++------+------------+-------------+-----------+------+
+  1B       8B            16B          2B        4B
+                                                    
+  Total: 31 bytes (padded to 33 with overhead)
+```
+
+<Accordion title="Encryption Details">
+  ```cpp
+  // Encrypt channel data
+  bool encrypt(const uint8_t* plaintext, size_t len, 
+               uint8_t* ciphertext, uint16_t sequence, 
+               const uint8_t* deviceId);
+  
+  // Decrypt channel data
+  bool decrypt(const uint8_t* ciphertext, size_t len,
+               uint8_t* plaintext, uint16_t sequence,
+               const uint8_t* deviceId);
+  
+  // Calculate HMAC (truncated to 4 bytes)
+  void calculateHMAC(const uint8_t* data, size_t dataLen, 
+                     uint8_t* hmac);
+  
+  // Verify HMAC
+  bool verifyHMAC(const uint8_t* data, size_t dataLen, 
+                  const uint8_t* hmac);
+  ```
+  
+  The sequence number is included in both encryption and HMAC to prevent replay attacks.
+</Accordion>
+
+## Re-pairing
+
+To re-pair devices (e.g., after changing binding phrase):
+
+### Option 1: Clear EEPROM
+
+```cpp
+// Add temporary code in setup()
+EEPROM.begin(256);
+for (int i = 120; i < 168; i++) {
+    EEPROM.write(i, 0xFF);
+}
+EEPROM.commit();
+```
+
+Upload this code to both TX and RX, power cycle, then upload normal firmware.
+
+### Option 2: Change Security Magic
+
+Increment the `SECURITY_MAGIC_VALUE` in `Security.h` to invalidate stored pairing:
+
+```c
+// Before:
+#define SECURITY_MAGIC_VALUE 0x58554352UL
+
+// After:
+#define SECURITY_MAGIC_VALUE 0x58554353UL  // Increment by 1
+```
+
+Recompile and upload to both devices. They will detect the magic mismatch and clear pairing.
+
+### Option 3: Manual Re-pairing
+
+1. Hold BOOTSEL on RX for 5 seconds (enters pairing mode)
+2. Power cycle TX or send pairing command from RC board
+3. New pairing will overwrite old pairing
+
+## Connection After Pairing
+
+Once paired, devices use a SYNC/SYNC_ACK handshake to establish connection:
+
+### MSG_SYNC (0x05)
+
+**Direction**: TX → RX (periodic)
+
+**Payload** (8 bytes):
+```c
++------------------+
+|  TX Device ID    |
+|    (8 bytes)     |
++------------------+
+```
+
+### MSG_SYNC_ACK (0x06)
+
+**Direction**: RX → TX (in response to SYNC)
+
+**Payload** (8 bytes):
+```c
++------------------+
+|  RX Device ID    |
+|    (8 bytes)     |
++------------------+
+```
+
+**Connection flow**:
+1. TX sends SYNC packets with its device ID
+2. RX verifies device ID matches paired TX device
+3. RX responds with SYNC_ACK containing its device ID
+4. TX verifies device ID matches paired RX device
+5. Connection established! TX begins sending encrypted channel data
+6. RX validates each channel message (device ID, HMAC, sequence)
+
+<Note>
+The RX only accepts SYNC packets from the paired TX device ID. Similarly, the TX only accepts SYNC_ACK from the paired RX device ID. This prevents unauthorized devices from connecting.
+</Note>
+
+## Pairing Timeouts
+
+<ParamField path="PAIRING_MODE_TIMEOUT_MS" type="int" default="60000">
+  Pairing mode duration in milliseconds (defined in code).
+  
+  ```c
+  #define PAIRING_MODE_TIMEOUT_MS 60000  // 60 seconds
+  ```
+  
+  After this timeout, RX exits pairing mode and returns to normal operation.
+</ParamField>
+
+<ParamField path="PAIRING_SCAN_INTERVAL_MS" type="int" default="500">
+  Interval between pairing packet transmissions (defined in code).
+  
+  ```c
+  #define PAIRING_SCAN_INTERVAL_MS 500  // 500ms
+  ```
+  
+  TX sends pairing packets every 500ms while in pairing mode.
+</ParamField>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Pairing fails (RX not responding)">
+    - Verify RX is in pairing mode (check serial output)
+    - Ensure RX pairing mode hasn't timed out (60 seconds)
+    - Check both devices use the same binding phrase
+    - Monitor serial output for binding UID mismatch
+    - Verify radio is initialized ("SX128x ready" in serial)
+    - Check frequency and FLRC parameters match
+    - Try bringing devices closer together (< 1 meter)
+  </Accordion>
+  
+  <Accordion title="Binding UID mismatch">
+    - Verify both TX and RX have identical binding phrases
+    - Check for typos in platformio.ini (case-sensitive)
+    - Ensure escaped quotes are correct: `\"phrase\"`
+    - Recompile and upload both devices
+    - Monitor serial for "Binding UID: XX XX XX XX ..." output
+    - Compare UIDs from TX and RX serial output
+  </Accordion>
+  
+  <Accordion title="Devices won't reconnect after pairing">
+    - Check EEPROM is functioning (serial shows "Pairing key loaded")
+    - Verify devices haven't been re-flashed (clears EEPROM on some boards)
+    - Check security magic value matches (shouldn't change)
+    - Monitor for "Device ID mismatch" in serial
+    - Try re-pairing (hold BOOTSEL on RX for 5 seconds)
+  </Accordion>
+  
+  <Accordion title="RX won't enter pairing mode">
+    - Check AUTO_PAIR_TIMEOUT_SEC is not 0
+    - Verify BOOTSEL button is functioning (test with serial output)
+    - Ensure RX is not already paired (clear EEPROM if needed)
+    - Check serial output for "Entering pairing mode" message
+    - Try manual pairing (hold BOOTSEL for 5 seconds)
+  </Accordion>
+  
+  <Accordion title="Pairing succeeds but no channel data">
+    - Pairing is separate from connection - check connection state
+    - Monitor for SYNC/SYNC_ACK messages in serial
+    - Verify TX is receiving channel data from RC board (UART protocol)
+    - Check encryption/decryption is working (no HMAC errors)
+    - Monitor for "Device ID mismatch" or "HMAC verification failed"
+  </Accordion>
+  
+  <Accordion title="Multiple RX modules responding to same TX">
+    - Each RX must be paired individually with a specific TX
+    - Use different binding phrases for different systems
+    - After pairing, only the paired RX will respond to SYNC
+    - Device IDs ensure exclusive connections
+  </Accordion>
+</AccordionGroup>
+
+## Security Considerations
+
+<Warning>
+**Important Security Notes**:
+
+- **Change the default binding phrase** - The default is publicly known
+- **Use unique phrases per system** - Prevents cross-interference
+- **Physical security** - Anyone with EEPROM access can extract pairing keys
+- **Re-pair if compromised** - Change binding phrase and re-pair both devices
+- **Sequence numbers** - Prevent replay attacks but reset on power cycle
+- **HMAC truncation** - 4-byte HMAC provides 2^32 security (acceptable for RC links)
+</Warning>
+
+### What is Protected
+
+✅ **Protected**:
+- Channel data (encrypted with AES-128)
+- Device identity (device IDs verified)
+- Message authenticity (HMAC-SHA256)
+- Replay attacks (sequence numbers)
+- Unauthorized pairing (binding UID verification)
+
+❌ **Not Protected**:
+- Radio frequency (2.4 GHz ISM band, no frequency hopping)
+- Packet metadata (message type, length)
+- Sync packets (device IDs visible, but connection requires pairing)
+- Side-channel attacks (timing, power analysis)
+
+## See Also
+
+- [Build Flags Reference](/configuration/build-flags) - DEFAULT_BINDING_PHRASE and AUTO_PAIR_TIMEOUT_SEC
+- [Radio Settings](/configuration/radio-settings) - SX1280 configuration
+- [UART Protocol](/configuration/uart-protocol) - Pairing commands via RC board

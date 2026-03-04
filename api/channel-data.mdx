@@ -1,0 +1,123 @@
+---
+title: ChannelData
+description: Channel data structure for RC control inputs
+---
+
+The `ChannelData` structure is used to transmit RC control channel values between components via the UART protocol.
+
+## Structure Definition
+
+```cpp
+struct ChannelData {
+    uint16_t channels[8];  // 1000-2000µs
+} __attribute__((packed));
+```
+
+## Fields
+
+<ResponseField name="channels" type="uint16_t[8]">
+  Array of 8 channel values in microseconds (1000-2000µs range).
+  
+  The array is packed with the `__attribute__((packed))` directive to ensure consistent memory layout for UART transmission.
+</ResponseField>
+
+## Channel Mapping
+
+The standard channel mapping follows RC conventions:
+
+| Channel | Index | Purpose | Range |
+|---------|-------|---------|-------|
+| Aileron | 0 | Roll control | 1000-2000µs |
+| Elevator | 1 | Pitch control | 1000-2000µs |
+| Rudder | 2 | Yaw control | 1000-2000µs |
+| Throttle | 3 | Throttle | 1000-2000µs |
+| Aux 1 | 4 | Auxiliary switch 1 | 1000/2000µs |
+| Aux 2 | 5 | Auxiliary switch 2 | 1000/2000µs |
+| Aux 3 | 6 | Auxiliary switch 3 | 1000/2000µs |
+| Aux 4 | 7 | Auxiliary switch 4 | 1000/2000µs |
+
+<Note>
+Channel values are in microseconds matching standard RC servo timing (1000µs = minimum, 1500µs = center, 2000µs = maximum).
+</Note>
+
+## Usage Example
+
+### RC Board (Sending Channels)
+
+```cpp
+#include "UARTProtocol.h"
+
+UARTProtocol uartProto(&Serial1);
+
+void setup() {
+    uartProto.begin(420000);
+}
+
+void loop() {
+    // Read channels from joysticks/switches
+    uint16_t channels[8];
+    channels[0] = map(analogRead(AILERON_PIN), 0, 65535, 1000, 2000);
+    channels[1] = map(analogRead(ELEVATOR_PIN), 0, 65535, 1000, 2000);
+    channels[2] = map(analogRead(RUDDER_PIN), 0, 65535, 1000, 2000);
+    channels[3] = map(analogRead(THROTTLE_PIN), 0, 65535, 1000, 2000);
+    channels[4] = digitalRead(AUX1_PIN) ? 2000 : 1000;
+    channels[5] = digitalRead(AUX2_PIN) ? 2000 : 1000;
+    channels[6] = digitalRead(AUX3_PIN) ? 2000 : 1000;
+    channels[7] = digitalRead(AUX4_PIN) ? 2000 : 1000;
+    
+    // Send via UART
+    uartProto.sendChannels(channels);
+    
+    delay(4);  // 250Hz update rate
+}
+```
+
+### TX Module (Receiving Channels)
+
+```cpp
+#include "UARTProtocol.h"
+
+UARTProtocol uartProto(&Serial1);
+uint16_t currentChannels[8];
+
+void onChannelsReceived(const ChannelData* data) {
+    // Copy received channels
+    memcpy(currentChannels, data->channels, sizeof(currentChannels));
+    
+    // Forward to radio transmission
+    // ...
+}
+
+void setup() {
+    uartProto.begin(420000);
+    uartProto.setOnChannels(onChannelsReceived);
+}
+
+void loop() {
+    uartProto.loop();
+}
+```
+
+## UART Transmission
+
+The `ChannelData` structure is transmitted via UART protocol using message type `UART_MSG_CHANNELS` (0x01):
+
+- **Frame format**: SYNC (0xA5) + LENGTH (16) + TYPE (0x01) + PAYLOAD (16 bytes) + CRC8
+- **Payload size**: 16 bytes (8 channels × 2 bytes each)
+- **Byte order**: Little-endian (RP2040 native)
+- **Update rate**: Typically 250Hz from RC board
+
+## Radio Transmission
+
+After UART reception, channels are re-encoded for radio transmission:
+
+- **Message type**: MSG_CHANNELS (0x01)
+- **Encryption**: AES-128 encrypted
+- **Authentication**: HMAC-SHA256 (truncated to 4 bytes)
+- **Total packet size**: 33 bytes (fixed-length FLRC packet)
+
+## See Also
+
+- [UART Protocol](/api/uart-protocol) - Protocol for UART transmission
+- [UART Messages](/api/uart-messages) - UART message types
+- [Radio Messages](/api/radio-messages) - Radio message encoding

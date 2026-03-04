@@ -1,0 +1,457 @@
+---
+title: UART Protocol
+description: UART communication protocol between RC board and TX module
+---
+
+The XLRS system uses a custom UART protocol for communication between the RC board (input controller) and the TX module (radio transmitter). This protocol operates at 420000 baud and uses a frame-based structure with CRC8 checksums for reliability.
+
+## Protocol Overview
+
+The UART protocol enables bidirectional communication:
+- **RC Board → TX Module**: Channel data, commands (pair, restart, status request)
+- **TX Module → RC Board**: Telemetry (RSSI, SNR, battery), status, acknowledgments
+
+### Key Features
+
+- **Baudrate**: 420000 bps (high-speed for low latency)
+- **Frame-based**: Sync byte + length + type + payload + CRC8
+- **Reliable**: CRC8 checksum for error detection
+- **Non-blocking**: State machine-based reception
+- **Callback-driven**: Event handlers for each message type
+
+## Frame Structure
+
+Every UART message follows this structure:
+
+```
++------+--------+------+---------+-----+
+| SYNC | LENGTH | TYPE | PAYLOAD | CRC |
++------+--------+------+---------+-----+
+  1B      1B      1B    0-60B     1B
+```
+
+| Field | Size | Description |
+|-------|------|-------------|
+| SYNC | 1 byte | Sync byte (0xA5) |
+| LENGTH | 1 byte | Payload length (0-60) |
+| TYPE | 1 byte | Message type (see below) |
+| PAYLOAD | 0-60 bytes | Message data |
+| CRC | 1 byte | CRC8 checksum (length + type + payload) |
+
+<ParamField path="UART_PROTOCOL_SYNC_BYTE" type="hex" default="0xA5">
+  Synchronization byte to identify frame start.
+</ParamField>
+
+<ParamField path="UART_PROTOCOL_MAX_PAYLOAD" type="int" default="60">
+  Maximum payload size in bytes.
+</ParamField>
+
+<ParamField path="UART_PROTOCOL_MAX_FRAME_SIZE" type="int" default="63">
+  Maximum total frame size: 1 (SYNC) + 1 (LEN) + 1 (TYPE) + 60 (PAYLOAD) + 1 (CRC)
+</ParamField>
+
+## UART Configuration
+
+<ParamField path="UART_PROTOCOL_BAUDRATE" type="int" default="420000">
+  UART baudrate for RC board ↔ TX module communication.
+  
+  ```ini platformio.ini
+  # Custom baudrate (not recommended)
+  build_flags = 
+      -DUART_PROTOCOL_BAUDRATE=115200
+  ```
+  
+  <Warning>
+  Changing the baudrate from 420000 may increase latency. Both RC board and TX module must use the same baudrate.
+  </Warning>
+</ParamField>
+
+### Pin Configuration (TX Module)
+
+<ParamField path="UART_PROTOCOL_TX" type="int" default="8">
+  TX module UART transmit pin (to RC board RX).
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DUART_PROTOCOL_TX=8
+  ```
+</ParamField>
+
+<ParamField path="UART_PROTOCOL_RX" type="int" default="9">
+  TX module UART receive pin (from RC board TX).
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DUART_PROTOCOL_RX=9
+  ```
+</ParamField>
+
+## Message Types
+
+The protocol defines several message types for different purposes:
+
+### Channel Data (0x01)
+
+**Direction**: RC Board → TX Module
+
+<ParamField path="UART_MSG_CHANNELS" type="enum" default="0x01">
+  8-channel control data from RC board to TX module.
+  
+  **Payload structure** (16 bytes):
+  ```c
+  struct ChannelData {
+      uint16_t channels[8];  // 1000-2000µs per channel
+  } __attribute__((packed));
+  ```
+  
+  - Each channel: 16-bit unsigned integer (big-endian)
+  - Range: 1000-2000 µs (standard RC PWM values)
+  - Channels: 0=Aileron, 1=Elevator, 2=Rudder, 3=Throttle, 4-7=Aux
+</ParamField>
+
+### Commands (0x10 - 0x15)
+
+**Direction**: RC Board → TX Module (or bidirectional)
+
+<ParamField path="UART_MSG_CMD_PAIR" type="enum" default="0x10">
+  Command to enter pairing mode.
+  
+  **Payload**: None (0 bytes)
+  
+  When TX module receives this command, it enters pairing mode and attempts to pair with the RX module.
+</ParamField>
+
+<ParamField path="UART_MSG_CMD_BOND" type="enum" default="0x11">
+  Query bonding/pairing status.
+  
+  **Payload**: None (0 bytes)
+  
+  TX module responds with STATUS message indicating pairing state.
+</ParamField>
+
+<ParamField path="UART_MSG_CMD_RESTART" type="enum" default="0x12">
+  Request TX module restart.
+  
+  **Payload**: None (0 bytes)
+  
+  TX module performs a software reset.
+</ParamField>
+
+<ParamField path="UART_MSG_CMD_STATUS_REQ" type="enum" default="0x13">
+  Request status update from TX module.
+  
+  **Payload**: None (0 bytes)
+  
+  TX module responds with STATUS message.
+</ParamField>
+
+<ParamField path="UART_MSG_PING" type="enum" default="0x14">
+  Device availability check.
+  
+  **Payload**: None (0 bytes)
+  
+  Recipient should respond with PONG message.
+</ParamField>
+
+<ParamField path="UART_MSG_PONG" type="enum" default="0x15">
+  Device availability response.
+  
+  **Payload**: None (0 bytes)
+  
+  Sent in response to PING message.
+</ParamField>
+
+### Telemetry (0x20 - 0x23)
+
+**Direction**: TX Module → RC Board
+
+<ParamField path="UART_MSG_TELEMETRY" type="enum" default="0x20">
+  Radio link telemetry data.
+  
+  **Payload structure** (11 bytes):
+  ```c
+  struct TelemetryData {
+      int16_t rssi;          // dBm (big-endian)
+      float snr;             // dB (4 bytes)
+      uint16_t rxBattMv;     // millivolts (big-endian)
+      uint8_t rxBattPct;     // percentage (0-100)
+      uint8_t linkQuality;   // 0-100%
+  } __attribute__((packed));
+  ```
+  
+  - **RSSI**: Received Signal Strength Indicator in dBm (typically -100 to -30)
+  - **SNR**: Signal-to-Noise Ratio in dB (higher is better)
+  - **rxBattMv**: RX module battery voltage in millivolts
+  - **rxBattPct**: RX module battery percentage (0-100)
+  - **linkQuality**: Link quality percentage (0-100, based on RSSI and packet loss)
+</ParamField>
+
+<ParamField path="UART_MSG_STATUS" type="enum" default="0x21">
+  Connection and pairing status.
+  
+  **Payload structure** (10 bytes):
+  ```c
+  struct StatusData {
+      uint8_t connectionState;  // ConnectionState enum
+      uint8_t pairingState;     // 0=unpaired, 1=paired
+      uint32_t packetsReceived; // Total packets received (big-endian)
+      uint32_t packetsLost;     // Total packets lost (big-endian)
+  } __attribute__((packed));
+  ```
+  
+  **Connection states**:
+  - 0: DISCONNECTED
+  - 1: PAIRING
+  - 2: CONNECTING
+  - 3: CONNECTED
+  - 4: LOST
+</ParamField>
+
+<ParamField path="UART_MSG_ACK" type="enum" default="0x22">
+  Command acknowledgment.
+  
+  **Payload** (1 byte): The message type being acknowledged
+  
+  Sent by TX module to confirm receipt and processing of a command.
+</ParamField>
+
+<ParamField path="UART_MSG_ERROR" type="enum" default="0x23">
+  Error notification.
+  
+  **Payload** (1 byte): Error code
+  
+  Sent by TX module to report errors.
+  
+  **Common error codes**:
+  - 0x01: Invalid command
+  - 0x02: CRC error
+  - 0x03: Timeout
+  - 0x04: Radio error
+  - 0x05: Not paired
+</ParamField>
+
+## Usage Example
+
+### Sending Channel Data (RC Board)
+
+```cpp
+#include "UARTProtocol.h"
+
+HardwareSerial Serial1(8, 9);  // TX=8, RX=9
+UARTProtocol uart(&Serial1);
+
+void setup() {
+    uart.begin(420000);  // Use default baudrate
+}
+
+void loop() {
+    uint16_t channels[8] = {
+        1500, 1500, 1000, 1500,  // Aileron, Elevator, Rudder, Throttle
+        1000, 1500, 2000, 1500   // Aux1-4
+    };
+    
+    uart.sendChannels(channels);
+    uart.loop();  // Process incoming messages
+    delay(20);    // 50 Hz update rate
+}
+```
+
+### Receiving Telemetry (RC Board)
+
+```cpp
+#include "UARTProtocol.h"
+
+UARTProtocol uart(&Serial1);
+
+void onTelemetry(const TelemetryData* data) {
+    Serial.print("RSSI: ");
+    Serial.print(data->rssi);
+    Serial.print(" dBm, SNR: ");
+    Serial.print(data->snr);
+    Serial.print(" dB, Battery: ");
+    Serial.print(data->rxBattMv);
+    Serial.print(" mV (");
+    Serial.print(data->rxBattPct);
+    Serial.print("%), Link: ");
+    Serial.print(data->linkQuality);
+    Serial.println("%");
+}
+
+void setup() {
+    Serial.begin(115200);
+    uart.begin(420000);
+    uart.setOnTelemetry(onTelemetry);
+}
+
+void loop() {
+    uart.loop();  // Process incoming messages
+}
+```
+
+### Sending Commands (RC Board)
+
+```cpp
+// Enter pairing mode
+uart.sendCommand(UART_MSG_CMD_PAIR);
+
+// Request status
+uart.sendCommand(UART_MSG_CMD_STATUS_REQ);
+
+// Restart TX module
+uart.sendCommand(UART_MSG_CMD_RESTART);
+
+// Ping device
+uart.sendPing();
+```
+
+### Processing Messages (TX Module)
+
+```cpp
+#include "UARTProtocol.h"
+
+UARTProtocol uart(&Serial1);
+
+void onChannels(const ChannelData* data) {
+    // Forward channels to radio
+    for (int i = 0; i < 8; i++) {
+        Serial.print("CH");
+        Serial.print(i);
+        Serial.print(": ");
+        Serial.print(data->channels[i]);
+        Serial.print(" ");
+    }
+    Serial.println();
+}
+
+void onCommand(UARTMsgType cmd) {
+    switch (cmd) {
+        case UART_MSG_CMD_PAIR:
+            // Enter pairing mode
+            enterPairingMode();
+            uart.sendAck(cmd);
+            break;
+        case UART_MSG_CMD_STATUS_REQ:
+            // Send status
+            sendStatusUpdate();
+            break;
+        case UART_MSG_CMD_RESTART:
+            uart.sendAck(cmd);
+            rp2040.restart();
+            break;
+    }
+}
+
+void setup() {
+    uart.begin(420000);
+    uart.setOnChannels(onChannels);
+    uart.setOnCommand(onCommand);
+}
+
+void loop() {
+    uart.loop();  // Process incoming messages
+    
+    // Send telemetry periodically
+    static unsigned long lastTelemetry = 0;
+    if (millis() - lastTelemetry > 200) {  // 5 Hz
+        TelemetryData telemetry = {
+            .rssi = currentRSSI,
+            .snr = currentSNR,
+            .rxBattMv = rxBatteryMillivolts,
+            .rxBattPct = rxBatteryPercent,
+            .linkQuality = calculateLinkQuality()
+        };
+        uart.sendTelemetry(&telemetry);
+        lastTelemetry = millis();
+    }
+}
+```
+
+## CRC Calculation
+
+The protocol uses CRC8 with the following parameters:
+- **Polynomial**: 0x07
+- **Initial value**: 0x00
+- **Input**: LENGTH + TYPE + PAYLOAD bytes
+- **Output**: 1-byte checksum
+
+The CRC is automatically calculated and verified by the `UARTProtocol` class.
+
+## Statistics
+
+The `UARTProtocol` class tracks communication statistics:
+
+```cpp
+uint32_t sent = uart.getPacketsSent();
+uint32_t received = uart.getPacketsReceived();
+uint32_t dropped = uart.getPacketsDropped();
+
+// Reset statistics
+uart.resetStats();
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="No communication between RC board and TX module">
+    - Verify UART wiring (RC TX → TX RX, RC RX → TX TX)
+    - Check both devices use 420000 baudrate
+    - Ensure ground connection between devices
+    - Monitor serial output for CRC errors or timeouts
+    - Try swapping TX/RX pins if wiring is uncertain
+  </Accordion>
+  
+  <Accordion title="Frequent CRC errors">
+    - Check UART baudrate matches on both sides (420000)
+    - Verify stable power supply (voltage drops cause errors)
+    - Reduce cable length or use shielded cable
+    - Check for ground loops or noise on UART lines
+    - Try lower baudrate (115200) for testing
+  </Accordion>
+  
+  <Accordion title="Commands not acknowledged">
+    - Check TX module is running and responsive
+    - Monitor TX module serial output for received commands
+    - Verify command format and payload length
+    - Check for UART overrun (RX buffer full)
+    - Ensure `uart.loop()` is called frequently
+  </Accordion>
+  
+  <Accordion title="Missing telemetry data">
+    - Verify TX module is connected to RX (radio link active)
+    - Check telemetry send interval (should be ~200ms)
+    - Monitor TX module for telemetry generation
+    - Ensure RC board has telemetry callback registered
+    - Check for packet drops due to RX buffer overflow
+  </Accordion>
+  
+  <Accordion title="High packet drop rate">
+    - Reduce data transmission rate
+    - Increase `uart.loop()` call frequency
+    - Check for blocking operations in callbacks
+    - Monitor CPU usage (may be missing interrupts)
+    - Verify UART hardware is functioning correctly
+  </Accordion>
+</AccordionGroup>
+
+## Protocol Implementation
+
+The UART protocol is implemented in `lib/UARTProtocol/UARTProtocol.h` and `UARTProtocol.cpp`.
+
+**Key classes**:
+- `UARTProtocol`: Main protocol handler
+- `Crc8`: CRC8 checksum calculator
+
+**State machine**:
+```
+RX_STATE_SYNC    → Wait for sync byte (0xA5)
+RX_STATE_LENGTH  → Read payload length
+RX_STATE_TYPE    → Read message type
+RX_STATE_PAYLOAD → Read payload bytes
+RX_STATE_CRC     → Verify CRC and process message
+```
+
+## See Also
+
+- [Build Flags Reference](/configuration/build-flags) - UART pin configuration
+- [Radio Settings](/configuration/radio-settings) - SX1280 radio configuration
+- [Pairing Process](/configuration/pairing) - How pairing works

@@ -1,0 +1,199 @@
+---
+title: Complete Wiring Guide
+description: Full system wiring diagrams and pin tables for all XLRS modules
+---
+
+This guide provides complete wiring information for the entire XLRS system, including the RC board, TX module, and RX module.
+
+## System Overview
+
+The XLRS system consists of three interconnected modules:
+
+```
+┌─────────────┐      UART          ┌─────────────┐     SX1280      ┌─────────────┐      CRSF       ┌──────────────┐
+│  RC Board   │ ───────────────> │ TX Module   │ ─────────────> │  RX Module  │ ─────────────> │Flight Control│
+│  (Inputs)   │  GP8/GP9 420kbps │  (Radio TX) │   2.4GHz FLRC  │  (Radio RX) │  GP8/GP9 420kbps│              │
+└─────────────┘                   └─────────────┘                 └─────────────┘                 └──────────────┘
+     ↓ I2C                              ↓ SPI                          ↓ SPI                           ↓ Telemetry
+  OLED + ADC                         SX1280                          SX1280                      Battery Data
+```
+
+## TX Module Complete Wiring
+
+### SX1280 Radio (TX Module → Radio)
+
+| SX1280 Pin | TX Module Pin | Signal | Type | Notes |
+|------------|---------------|--------|------|-------|
+| SCK | GP18 | SPI Clock | Output | SPI clock signal |
+| MOSI | GP19 | SPI MOSI | Output | Data to radio |
+| MISO | GP16 | SPI MISO | Input | Data from radio |
+| CS/NSS | GP17 | Chip Select | Output | Active low |
+| BUSY | GP20 | Busy Signal | Input | Radio busy indicator |
+| DIO1 | GP21 | Interrupt | Input | Packet RX interrupt |
+| RST | GP22 | Reset | Output | Active low reset |
+| RXEN | GP14 | RX Enable | Output | Optional PA/LNA control |
+| TXEN | GP15 | TX Enable | Output | Optional PA/LNA control |
+| VCC | 3.3V | Power | - | 3.3V only! |
+| GND | GND | Ground | - | Common ground |
+
+<Warning>
+  The SX1280 operates at 3.3V only. Connecting 5V will permanently damage the radio module.
+</Warning>
+
+### UART to RC Board (TX Module ↔ RC Board)
+
+| TX Module | RC Board | Signal | Baudrate |
+|-----------|----------|--------|----------|
+| GP8 (TX) | GP9 (RX) | TX → RC telemetry | 420000 |
+| GP9 (RX) | GP8 (TX) | RX ← RC channels | 420000 |
+| GND | GND | Common ground | - |
+
+<Warning>
+  **Cross-connect the UART pins**: TX module GP8 connects to RC board GP9, and TX module GP9 connects to RC board GP8.
+</Warning>
+
+## RX Module Complete Wiring
+
+### SX1280 Radio (RX Module → Radio)
+
+| SX1280 Pin | RX Module Pin | Signal | Type | Notes |
+|------------|---------------|--------|------|-------|
+| SCK | GP18 | SPI Clock | Output | SPI clock signal |
+| MOSI | GP19 | SPI MOSI | Output | Data to radio |
+| MISO | GP16 | SPI MISO | Input | Data from radio |
+| CS/NSS | GP17 | Chip Select | Output | Active low |
+| BUSY | GP20 | Busy Signal | Input | Radio busy indicator |
+| DIO1 | GP21 | Interrupt | Input | Packet RX interrupt |
+| RST | GP22 | Reset | Output | Active low reset |
+| RXEN | GP14 | RX Enable | Output | Optional PA/LNA control |
+| TXEN | GP15 | TX Enable | Output | Optional PA/LNA control |
+| VCC | 3.3V | Power | - | 3.3V only! |
+| GND | GND | Ground | - | Common ground |
+
+### CRSF to Flight Controller (RX Module → FC)
+
+| RX Module | Flight Controller | Signal | Baudrate |
+|-----------|-------------------|--------|----------|
+| GP8 (TX) | UART RX (CRSF) | CRSF channels | 420000 |
+| GP9 (RX) | UART TX (CRSF) | Telemetry | 420000 |
+| GND | GND | Common ground | - |
+| VBUS or 3V3 | 5V or 3.3V | Power | - |
+
+<Note>
+  The RX module can be powered from the flight controller's 5V (via USB/VBUS) or 3.3V output.
+</Note>
+
+## RC Board Complete Wiring
+
+### I2C Bus (RC Board → Display & ADC)
+
+| RC Board Pin | I2C Device | Signal | Address |
+|--------------|------------|--------|----------|
+| GP4 | SDA | I2C Data | - |
+| GP5 | SCL | I2C Clock | - |
+| 3.3V | VCC | Power | - |
+| GND | GND | Ground | - |
+
+**I2C Devices:**
+- **SH1106 OLED**: Address 0x3C (or 0x3D)
+- **ADS1115 ADC**: Address 0x48 (configurable: 0x48-0x4B)
+- **BQ2562X Charger**: Address 0x6A (optional)
+
+### Analog Joysticks (Option 1: External ADS1115)
+
+| Joystick | Signal | ADS1115 Channel | CRSF Channel |
+|----------|--------|-----------------|-------------|
+| Stick 1 X | Aileron | AIN0 | Ch0 |
+| Stick 1 Y | Elevator | AIN1 | Ch1 |
+| Stick 2 X | Rudder | AIN2 | Ch2 |
+| Stick 2 Y | Throttle | AIN3 | Ch3 |
+
+### Analog Joysticks (Option 2: Internal ADC - RP2350)
+
+| Joystick | Signal | RP2350 Pin | ADC Channel | CRSF Channel |
+|----------|--------|------------|-------------|-------------|
+| Stick 1 X | Aileron | GP26 | ADC0 | Ch0 |
+| Stick 1 Y | Elevator | GP27 | ADC1 | Ch1 |
+| Stick 2 X | Rudder | GP28 | ADC2 | Ch2 |
+| Stick 2 Y | Throttle | GP29 | ADC3 | Ch3 |
+
+<Note>
+  Connect joystick potentiometer wipers to ADC inputs, with VCC at 3.3V and GND at 0V.
+</Note>
+
+### Toggle Switches (3-Position)
+
+| Switch | IN1 Pin | IN2 Pin | CRSF Channel | Position Detection |
+|--------|---------|---------|--------------|--------------------|
+| T1 | GP1 | GP2 | Ch4 (Aux1) | IN1=HIGH → 1000, IN2=HIGH → 2000, Both LOW → 1500 |
+| T2 | GP3 | GP6 | Ch5 (Aux2) | IN1=HIGH → 1000, IN2=HIGH → 2000, Both LOW → 1500 |
+| T3 | GP7 | GP10 | Ch6 (Aux3) | IN1=HIGH → 1000, IN2=HIGH → 2000, Both LOW → 1500 |
+| T4 | GP11 | GP12 | Ch7 (Aux4) | IN1=HIGH → 1000, IN2=HIGH → 2000, Both LOW → 1500 |
+
+<Warning>
+  All toggle switch pins use INPUT_PULLUP configuration. Ensure switches connect to GND when active.
+</Warning>
+
+### Navigation Buttons
+
+| Button | Pin | Configuration | Function |
+|--------|-----|---------------|----------|
+| Enter | GP13 | INPUT_PULLDOWN | Send PAIR command (active HIGH) |
+| Back | GP14 | INPUT_PULLDOWN | Request status (active HIGH) |
+| Power | GP19 | INPUT_PULLUP | Enter shutdown mode (active LOW) |
+
+### Other Peripherals
+
+| Peripheral | Pin | Type | Description |
+|------------|-----|------|-------------|
+| Buzzer | GP24 | Output | Piezo buzzer (active HIGH) |
+
+## Power Distribution
+
+### TX Module Power
+
+- **Input**: USB (5V) or external 3.3V
+- **Consumption**: ~100-150mA typical
+- **SX1280**: Powered from Pico's 3.3V output
+
+### RX Module Power
+
+- **Input**: Flight controller 5V (via VBUS) or 3.3V
+- **Consumption**: ~100-150mA typical
+- **SX1280**: Powered from Pico's 3.3V output
+
+### RC Board Power
+
+- **Input**: USB (5V), LiPo battery with BQ2562X charger, or external 3.3V
+- **Consumption**: ~150-200mA typical (includes OLED + ADC)
+- **I2C Devices**: Powered from Pico's 3.3V output
+
+<Warning>
+  Never connect 5V directly to the SX1280 radio modules or I2C devices. Always use the RP2040's regulated 3.3V output.
+</Warning>
+
+## Common Wiring Mistakes to Avoid
+
+1. **Wrong UART connections**: Always cross-connect TX to RX and RX to TX between modules
+2. **5V to SX1280**: The radio operates at 3.3V only - 5V will damage it
+3. **Missing common ground**: All modules must share a common GND connection
+4. **Incorrect baudrate**: Both UART and CRSF use 420000 baud - ensure your flight controller supports this
+5. **Pull-up/pull-down confusion**: Toggle switches use INPUT_PULLUP, buttons use INPUT_PULLDOWN (except power button)
+6. **I2C address conflicts**: Ensure OLED and ADC use different addresses
+
+## Testing Wiring
+
+Before powering up the complete system:
+
+1. **Check all power connections**: Verify 3.3V and GND on all modules
+2. **Verify SPI wiring**: Ensure SCK, MOSI, MISO, and CS are correctly connected
+3. **Test I2C devices**: Use I2C scanner to detect OLED and ADC
+4. **Check UART connections**: Verify TX/RX cross-connection with a multimeter
+5. **Test radio initialization**: Monitor serial output for "SX128x ready" messages
+
+## Next Steps
+
+- [TX Module Details](/hardware/tx-module)
+- [RX Module Details](/hardware/rx-module)
+- [RC Board Details](/hardware/rc-board)
+- [Software Setup](/build/platformio-setup)

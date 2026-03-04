@@ -1,0 +1,105 @@
+---
+title: TX Module Hardware
+description: Hardware requirements and wiring for the XLRS TX module
+---
+
+The TX (transmitter) module receives channel data from the RC board via UART and transmits it wirelessly to the RX module using the SX1280 radio.
+
+## Hardware Components
+
+- **Microcontroller**: Raspberry Pi Pico (RP2040)
+- **Radio Module**: SX1280 2.4GHz radio with SPI interface
+- **Power**: 3.3V supply (USB or battery)
+
+## SX1280 Radio Wiring
+
+The TX module uses the SX1280 radio module for 2.4GHz wireless communication with FLRC modulation.
+
+### SPI Interface Pins
+
+| Signal | RP2040 Pin | Description |
+|--------|------------|-------------|
+| SPI SCK | GP18 | SPI Clock |
+| SPI MOSI | GP19 | SPI Data Out (Pico → SX1280) |
+| SPI MISO | GP16 | SPI Data In (SX1280 → Pico) |
+| SPI CS | GP17 | Chip Select (active low) |
+
+### Radio Control Pins
+
+| Signal | RP2040 Pin | Description |
+|--------|------------|-------------|
+| BUSY | GP20 | Radio Busy Signal (input) |
+| DIO1 | GP21 | Data Interrupt (input, interrupt-driven RX) |
+| RST | GP22 | Reset (output, active low) |
+
+### Optional TX/RX Enable Pins
+
+| Signal | RP2040 Pin | Description |
+|--------|------------|-------------|
+| RXEN | GP14 | RX Enable (optional, for modules with PA/LNA) |
+| TXEN | GP15 | TX Enable (optional, for modules with PA/LNA) |
+
+<Warning>
+  Ensure the SX1280 module is powered with 3.3V. Do not connect 5V to the radio module as this will damage it.
+</Warning>
+
+## UART Connection to RC Board
+
+The TX module receives channel data from the RC board via high-speed UART at 420000 baud.
+
+| Signal | RP2040 Pin | Direction | Description |
+|--------|------------|-----------|-------------|
+| UART TX | GP8 | Output | Transmit telemetry to RC board |
+| UART RX | GP9 | Input | Receive channel data from RC board |
+| Baudrate | 420000 | - | High-speed UART for low latency |
+
+### UART Protocol
+
+- **Frame-based protocol** with CRC8 checksum
+- **Message types**: Channels (from RC), Telemetry (to RC), Status, Commands
+- **Update rate**: 250Hz channel data from RC board
+
+<Warning>
+  The TX and RX pins must be cross-connected to the RC board:
+  - TX module GP8 (UART TX) → RC board GP9 (UART RX)
+  - TX module GP9 (UART RX) → RC board GP8 (UART TX)
+</Warning>
+
+## Pin Configuration Override
+
+All pin assignments can be overridden in `platformio.ini` using build flags:
+
+```ini
+build_flags =
+    -DSX128X_SPI_SCK=18
+    -DSX128X_SPI_MOSI=19
+    -DSX128X_SPI_MISO=16
+    -DSX128X_SPI_CS=17
+    -DSX128X_SPI_BUSY=20
+    -DSX128X_SPI_DIO1=21
+    -DSX128X_SPI_RST=22
+    -DSX128X_RXEN=14
+    -DSX128X_TXEN=15
+    -DUART_PROTOCOL_TX=8
+    -DUART_PROTOCOL_RX=9
+```
+
+## Power Requirements
+
+- **Operating Voltage**: 3.3V
+- **Current Draw**: ~100-150mA typical (RP2040 + SX1280)
+- **Power Source**: USB (5V regulated to 3.3V by Pico) or external 3.3V supply
+
+## Radio Configuration
+
+- **Frequency**: 2420 MHz (default, configurable)
+- **Modulation**: FLRC (Fast Long Range Communication)
+- **Bitrate**: 1300 kbps
+- **Output Power**: 10 dBm (default, max 13 dBm)
+- **Packet Length**: 33 bytes fixed
+
+## Next Steps
+
+- [RX Module Hardware](/hardware/rx-module) - Receiver module wiring
+- [RC Board Hardware](/hardware/rc-board) - Controller input hardware
+- [Complete Wiring Guide](/hardware/wiring) - Full system wiring diagrams

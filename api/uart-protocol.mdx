@@ -1,0 +1,499 @@
+---
+title: 'UARTProtocol'
+description: 'Custom UART protocol for communication between RC controller, TX module, and RX module'
+---
+
+## Overview
+
+The `UARTProtocol` class implements a custom serial protocol for bidirectional communication between the RC controller, TX module, and RX module. It handles channel data, telemetry, status updates, and commands.
+
+## Class Definition
+
+Location: `lib/UARTProtocol/UARTProtocol.h`
+
+```cpp
+class UARTProtocol {
+public:
+    UARTProtocol(HardwareSerial* serial);
+    
+    void begin(uint32_t baud = UART_PROTOCOL_BAUDRATE);
+    
+    // Send methods
+    bool sendChannels(const uint16_t channels[8]);
+    bool sendTelemetry(const TelemetryData* data);
+    bool sendStatus(const StatusData* data);
+    bool sendCommand(UARTMsgType cmd);
+    bool sendAck(UARTMsgType ackedCmd);
+    bool sendError(uint8_t errorCode);
+    bool sendPing();
+    bool sendPong();
+    
+    void loop();
+    
+    // Callback setters
+    void setOnChannels(OnChannelsCallback cb);
+    void setOnTelemetry(OnTelemetryCallback cb);
+    void setOnStatus(OnStatusCallback cb);
+    void setOnCommand(OnCommandCallback cb);
+    void setOnAck(OnAckCallback cb);
+    void setOnError(OnErrorCallback cb);
+    void setOnPong(OnPongCallback cb);
+    
+    // Statistics
+    uint32_t getPacketsSent() const;
+    uint32_t getPacketsReceived() const;
+    uint32_t getPacketsDropped() const;
+    void resetStats();
+};
+```
+
+## Message Types
+
+```cpp
+enum UARTMsgType : uint8_t {
+    UART_MSG_CHANNELS = 0x01,      // RC channel data
+    UART_MSG_CMD_PAIR = 0x10,      // Enter pairing mode
+    UART_MSG_CMD_BOND = 0x11,      // Check bond status
+    UART_MSG_CMD_RESTART = 0x12,   // Restart device
+    UART_MSG_CMD_STATUS_REQ = 0x13,// Request status
+    UART_MSG_PING = 0x14,          // Device availability check
+    UART_MSG_PONG = 0x15,          // Device availability response
+    UART_MSG_TELEMETRY = 0x20,     // Telemetry data
+    UART_MSG_STATUS = 0x21,        // Status data
+    UART_MSG_ACK = 0x22,           // Command acknowledgment
+    UART_MSG_ERROR = 0x23          // Error response
+};
+```
+
+## Data Structures
+
+### ChannelData
+
+RC channel values (1000-2000 µs range).
+
+```cpp
+struct ChannelData {
+    uint16_t channels[8];  // 8 channels: 1000-2000µs
+} __attribute__((packed));
+```
+
+### TelemetryData
+
+Radio link telemetry and battery status.
+
+```cpp
+struct TelemetryData {
+    int16_t rssi;          // Signal strength in dBm
+    float snr;             // Signal-to-noise ratio in dB
+    uint16_t rxBattMv;     // RX battery in millivolts
+    uint8_t rxBattPct;     // RX battery percentage
+    uint8_t linkQuality;   // Link quality 0-100%
+} __attribute__((packed));
+```
+
+### StatusData
+
+Connection and pairing status.
+
+```cpp
+struct StatusData {
+    uint8_t connectionState;   // ConnectionState enum
+    uint8_t pairingState;      // 0=unpaired, 1=paired
+    uint32_t packetsReceived;
+    uint32_t packetsLost;
+} __attribute__((packed));
+```
+
+## Constructor
+
+### UARTProtocol()
+
+Creates a UART protocol instance.
+
+```cpp
+UARTProtocol(HardwareSerial* serial);
+```
+
+<ParamField path="serial" type="HardwareSerial*">
+  Pointer to hardware serial port (e.g., `&Serial2`)
+</ParamField>
+
+**Example:**
+
+```cpp
+UARTProtocol uartProto(&Serial2);
+```
+
+## Methods
+
+### begin()
+
+Initializes the UART protocol with specified baud rate.
+
+```cpp
+void begin(uint32_t baud = UART_PROTOCOL_BAUDRATE);
+```
+
+<ParamField path="baud" type="uint32_t" default="420000">
+  Baud rate (defaults to 420000)
+</ParamField>
+
+**Example:**
+
+```cpp
+Serial2.setTX(UART_PROTOCOL_TX);
+Serial2.setRX(UART_PROTOCOL_RX);
+uartProto.begin(UART_PROTOCOL_BAUDRATE);
+```
+
+### sendChannels()
+
+Sends RC channel data.
+
+```cpp
+bool sendChannels(const uint16_t channels[8]);
+```
+
+<ParamField path="channels" type="const uint16_t[8]">
+  Array of 8 channel values (1000-2000 µs)
+</ParamField>
+
+<ParamField path="return" type="bool">
+  Returns `true` if sent successfully
+</ParamField>
+
+**Example:**
+
+```cpp
+uint16_t channels[8] = {1500, 1500, 1000, 1500, 1500, 1500, 1500, 1500};
+uartProto.sendChannels(channels);
+```
+
+### sendTelemetry()
+
+Sends telemetry data.
+
+```cpp
+bool sendTelemetry(const TelemetryData* data);
+```
+
+<ParamField path="data" type="const TelemetryData*">
+  Pointer to telemetry data structure
+</ParamField>
+
+<ParamField path="return" type="bool">
+  Returns `true` if sent successfully
+</ParamField>
+
+**Example:**
+
+From `src/tx_main_sx128x.cpp:398`:
+
+```cpp
+void sendTelemetryToRC() {
+    if (millis() - lastTelemetrySent < TELEMETRY_INTERVAL) return;
+    lastTelemetrySent = millis();
+    
+    TelemetryData telem;
+    telem.rssi = last_rssi;
+    telem.snr = last_snr;
+    
+    if (rx_battery_valid && (millis() - lastBatteryUpdate) < 5000) {
+        telem.rxBattMv = rx_battery_mv;
+        telem.rxBattPct = rx_battery_pct;
+    } else {
+        telem.rxBattMv = 0;
+        telem.rxBattPct = 0;
+    }
+    
+    // Calculate link quality (0-100%) based on RSSI
+    if (last_rssi > -50) {
+        telem.linkQuality = 100;
+    } else if (last_rssi < -120) {
+        telem.linkQuality = 0;
+    } else {
+        telem.linkQuality = (uint8_t)map(last_rssi, -120, -50, 0, 100);
+    }
+    
+    uartProto.sendTelemetry(&telem);
+}
+```
+
+### sendStatus()
+
+Sends status update.
+
+```cpp
+bool sendStatus(const StatusData* data);
+```
+
+<ParamField path="data" type="const StatusData*">
+  Pointer to status data structure
+</ParamField>
+
+<ParamField path="return" type="bool">
+  Returns `true` if sent successfully
+</ParamField>
+
+**Example:**
+
+From `src/tx_main_sx128x.cpp:431`:
+
+```cpp
+void sendStatusToRC() {
+    StatusData status;
+    status.connectionState = (uint8_t)connectionState;
+    status.pairingState = isPaired() ? 1 : 0;
+    status.packetsReceived = packetsReceived;
+    status.packetsLost = packetsLost;
+    
+    uartProto.sendStatus(&status);
+}
+```
+
+### sendCommand()
+
+Sends a command message.
+
+```cpp
+bool sendCommand(UARTMsgType cmd);
+```
+
+<ParamField path="cmd" type="UARTMsgType">
+  Command type to send
+</ParamField>
+
+<ParamField path="return" type="bool">
+  Returns `true` if sent successfully
+</ParamField>
+
+**Example:**
+
+From `src/rc_crsf_main.cpp:511`:
+
+```cpp
+// Send PAIR command when button pressed
+uartProto.sendCommand(UART_MSG_CMD_PAIR);
+Serial.println("[RC] Sending PAIR command");
+```
+
+### sendPing() / sendPong()
+
+Device availability check protocol.
+
+```cpp
+bool sendPing();
+bool sendPong();
+```
+
+<ParamField path="return" type="bool">
+  Returns `true` if sent successfully
+</ParamField>
+
+**Example:**
+
+From `src/rc_crsf_main.cpp:643`:
+
+```cpp
+void ping_tx_device(void) {
+    if (millis() - lastPingSent < PING_INTERVAL) return;
+    lastPingSent = millis();
+    
+    uartProto.sendPing();
+}
+```
+
+### loop()
+
+Processes incoming messages. Call regularly in main loop.
+
+```cpp
+void loop();
+```
+
+**Example:**
+
+```cpp
+void loop() {
+    uartProto.loop();  // Process incoming messages
+    // ... rest of application logic
+}
+```
+
+## Callback Functions
+
+### setOnChannels()
+
+Register callback for received channel data.
+
+```cpp
+void setOnChannels(OnChannelsCallback cb);
+```
+
+**Callback Type:**
+```cpp
+typedef void (*OnChannelsCallback)(const ChannelData* data);
+```
+
+**Example:**
+
+From `src/tx_main_sx128x.cpp:179`:
+
+```cpp
+void onChannelsReceived(const ChannelData* data) {
+    if (data) {
+        for (int i = 0; i < 8; i++) {
+            channels[i] = data->channels[i];
+        }
+    }
+}
+
+uartProto.setOnChannels(onChannelsReceived);
+```
+
+### setOnTelemetry()
+
+Register callback for received telemetry.
+
+```cpp
+void setOnTelemetry(OnTelemetryCallback cb);
+```
+
+**Callback Type:**
+```cpp
+typedef void (*OnTelemetryCallback)(const TelemetryData* data);
+```
+
+**Example:**
+
+From `src/rc_crsf_main.cpp:466`:
+
+```cpp
+void onTelemetryReceived(const TelemetryData* data) {
+    if (data) {
+        memcpy(&telemetry, data, sizeof(TelemetryData));
+        telemetryValid = true;
+        lastTelemetryUpdate = millis();
+    }
+}
+
+uartProto.setOnTelemetry(onTelemetryReceived);
+```
+
+### setOnCommand()
+
+Register callback for received commands.
+
+```cpp
+void setOnCommand(OnCommandCallback cb);
+```
+
+**Callback Type:**
+```cpp
+typedef void (*OnCommandCallback)(UARTMsgType cmd);
+```
+
+**Example:**
+
+From `src/tx_main_sx128x.cpp:358`:
+
+```cpp
+void handleUARTCommands(UARTMsgType cmd) {
+    switch (cmd) {
+        case UART_MSG_CMD_PAIR:
+            Serial.println("[UART] PAIR command received");
+            pairingMode = true;
+            connectionState = STATE_PAIRING;
+            uartProto.sendAck(UART_MSG_CMD_PAIR);
+            break;
+            
+        case UART_MSG_CMD_RESTART:
+            Serial.println("[UART] RESTART command received");
+            uartProto.sendAck(UART_MSG_CMD_RESTART);
+            delay(100);
+            rp2040.restart();
+            break;
+    }
+}
+
+uartProto.setOnCommand(handleUARTCommands);
+```
+
+## Protocol Constants
+
+```cpp
+#define UART_PROTOCOL_SYNC_BYTE 0xA5
+#define UART_PROTOCOL_MAX_PAYLOAD 60
+#define UART_PROTOCOL_BAUDRATE 420000
+```
+
+## Frame Format
+
+```
+[SYNC][LEN][TYPE][PAYLOAD...][CRC]
+```
+
+- **SYNC:** 0xA5 (1 byte)
+- **LEN:** Payload length (1 byte)
+- **TYPE:** Message type (1 byte)
+- **PAYLOAD:** Message data (0-60 bytes)
+- **CRC:** CRC8 checksum (1 byte)
+
+## Statistics
+
+```cpp
+uint32_t getPacketsSent() const;
+uint32_t getPacketsReceived() const;
+uint32_t getPacketsDropped() const;
+void resetStats();
+```
+
+**Example:**
+
+```cpp
+Serial.print("Packets sent: ");
+Serial.println(uartProto.getPacketsSent());
+Serial.print("Packets received: ");
+Serial.println(uartProto.getPacketsReceived());
+Serial.print("Packets dropped: ");
+Serial.println(uartProto.getPacketsDropped());
+```
+
+## Complete Usage Example
+
+From `src/rc_crsf_main.cpp:277`:
+
+```cpp
+UARTProtocol uartProto(&Serial2);
+
+void setup() {
+    // Initialize UART protocol
+    Serial2.setTX(CRSF_TX_PIN);
+    Serial2.setRX(CRSF_RX_PIN);
+    uartProto.begin(UART_PROTOCOL_BAUDRATE);
+    
+    // Set callbacks
+    uartProto.setOnTelemetry(onTelemetryReceived);
+    uartProto.setOnStatus(onStatusReceived);
+    uartProto.setOnAck(onAckReceived);
+    uartProto.setOnError(onErrorReceived);
+    uartProto.setOnPong(onPongReceived);
+}
+
+void loop() {
+    // Send channels at 250Hz
+    static unsigned long lastChannelSend = 0;
+    if (millis() - lastChannelSend >= 4) {
+        lastChannelSend = millis();
+        uartProto.sendChannels(channels);
+    }
+    
+    // Process incoming messages
+    uartProto.loop();
+}
+```
+
+## See Also
+
+- [CRSF](/api/crsf) - Flight controller protocol
+- [Protocol](/api/protocol) - Radio packet encoding

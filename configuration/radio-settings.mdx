@@ -1,0 +1,306 @@
+---
+title: Radio Settings
+description: Configure SX1280 radio frequency, power, bitrate, and FLRC parameters
+---
+
+The XLRS system uses the SX1280 radio module with FLRC (Fast Long Range Communication) modulation for low-latency, reliable communication. All radio settings can be customized via build flags in `platformio.ini`.
+
+## Radio Configuration Overview
+
+The SX1280 radio is configured with the following default parameters optimized for low latency and reliable communication:
+
+| Parameter | Default Value | Description |
+|-----------|--------------|-------------|
+| Frequency | 2420.0 MHz | Operating frequency |
+| Modulation | FLRC | Fast Long Range Communication |
+| Bitrate | 1300 kbps | 1.3 Mbps for lowest latency |
+| Output Power | 10 dBm | Transmit power |
+| Coding Rate | 1/2 | FLRC coding rate |
+| Packet Length | 33 bytes | Fixed packet size |
+| Preamble | 16 bits | FLRC preamble length |
+
+## Frequency Settings
+
+<ParamField path="SX128X_FREQ_MHZ" type="float" default="2420.0">
+  Operating frequency in MHz. The SX1280 supports 2400-2500 MHz range.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_FREQ_MHZ=2450.0
+  ```
+  
+  <Accordion title="Frequency Selection Tips">
+    - **Default (2420 MHz)**: Good balance, avoids WiFi congestion
+    - **2400-2420 MHz**: Lower end of band, may have interference from BLE
+    - **2450-2480 MHz**: Higher end, may conflict with WiFi channels
+    - **Legal considerations**: Check local regulations for ISM band usage
+    - **Multi-system operation**: Use different frequencies for multiple systems
+  </Accordion>
+</ParamField>
+
+<ParamField path="SX128X_BW_KHZ" type="float" default="812.5">
+  Bandwidth in kHz. Wider bandwidth provides higher data rates but lower sensitivity.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_BW_KHZ=1625.0
+  ```
+  
+  **Supported values**: 203.125, 406.25, 812.5, 1625.0 kHz
+</ParamField>
+
+<ParamField path="SX128X_SF" type="int" default="7">
+  Spreading Factor for LoRa mode (not used with FLRC by default).
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_SF=8
+  ```
+  
+  **Range**: 5-12 (higher = longer range, lower speed)
+</ParamField>
+
+<ParamField path="SX128X_CR" type="int" default="5">
+  Coding Rate for LoRa mode (4/5 by default, not used with FLRC).
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_CR=6
+  ```
+  
+  **Values**: 5 (4/5), 6 (4/6), 7 (4/7), 8 (4/8)
+</ParamField>
+
+## FLRC Parameters
+
+FLRC (Fast Long Range Communication) is the recommended modulation for XLRS due to its low latency characteristics.
+
+<ParamField path="SX128X_FLRC_BR_KBPS" type="int" default="1300">
+  FLRC bitrate in kbps. Higher bitrate provides lower latency.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_FLRC_BR_KBPS=1300
+  ```
+  
+  **Supported values**: 260, 325, 520, 650, 1040, 1300 kbps
+  
+  <Accordion title="Bitrate Selection">
+    - **1300 kbps (default)**: Lowest latency, shortest range
+    - **650 kbps**: Good balance of latency and range
+    - **260-520 kbps**: Extended range, higher latency
+    
+    **Recommendation**: Use 1300 kbps for racing/freestyle, 650 kbps for long-range.
+  </Accordion>
+</ParamField>
+
+<ParamField path="SX128X_FLRC_CR" type="int" default="2">
+  FLRC coding rate denominator. Lower values provide better error correction.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_FLRC_CR=2
+  ```
+  
+  **Values**:
+  - `2`: 1/2 coding rate (default, most compatible, best error correction)
+  - `4`: 3/4 coding rate (higher throughput, less error correction)
+  - `1`: 1/1 coding rate (no error correction, maximum throughput)
+</ParamField>
+
+<ParamField path="SX128X_FLRC_PREAMBLE_BITS" type="int" default="16">
+  FLRC preamble length in bits. Longer preambles improve detection reliability.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_FLRC_PREAMBLE_BITS=32
+  ```
+  
+  **Supported values**: 8, 12, 16, 20, 24, 28, 32 bits
+</ParamField>
+
+<ParamField path="SX128X_FLRC_SHAPING" type="constant" default="RADIOLIB_SHAPING_0_5">
+  FLRC BT (Gaussian filter) shaping parameter.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_FLRC_SHAPING=RADIOLIB_SHAPING_1_0
+  ```
+  
+  **Values**: `RADIOLIB_SHAPING_0_5`, `RADIOLIB_SHAPING_1_0`
+</ParamField>
+
+## Power Settings
+
+<ParamField path="SX128X_OUTPUT_POWER_DBM" type="int" default="10">
+  Radio output power in dBm.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_OUTPUT_POWER_DBM=13
+  ```
+  
+  **Range**: -18 to +13 dBm
+  
+  <Accordion title="Power Level Guidelines">
+    - **-18 to 0 dBm**: Very short range, useful for bench testing
+    - **10 dBm (default)**: Good range (~1-2 km), moderate power consumption
+    - **13 dBm (max)**: Maximum range, highest power consumption
+    
+    **Legal considerations**: Check local regulations for maximum allowed power in the ISM band.
+    
+    **Note**: Higher power does not always mean better performance. Excessive power can cause receiver saturation at close range.
+  </Accordion>
+</ParamField>
+
+## Packet Settings
+
+<ParamField path="SX128X_FIXED_PACKET_LEN" type="int" default="33">
+  Fixed packet length in bytes. Set to 0 for variable-length packets.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_FIXED_PACKET_LEN=33
+  ```
+  
+  <Accordion title="Fixed vs Variable Packet Length">
+    **Fixed-length mode (default: 33 bytes)**:
+    - All packets are padded to the same length
+    - Improves TX/RX interoperability with FLRC
+    - Slightly higher overhead for small packets
+    - Recommended for XLRS to ensure reliable communication
+    
+    **Variable-length mode (0)**:
+    - Packets can be any length up to 64 bytes
+    - Lower overhead for small packets
+    - May have compatibility issues with some FLRC configurations
+    - Not recommended unless you know what you're doing
+    
+    The default 33-byte packet size accommodates:
+    - Message type (1 byte)
+    - Device ID (8 bytes)
+    - Channel data (16 bytes: 8 channels × 2 bytes)
+    - Sequence number (2 bytes)
+    - HMAC authentication (4 bytes)
+    - Overhead (2 bytes)
+  </Accordion>
+</ParamField>
+
+## SPI Pin Configuration
+
+All SPI pins can be customized. See [Build Flags](/configuration/build-flags) for pin configuration options.
+
+## Example Configuration
+
+<Accordion title="Long Range Configuration">
+  Optimize for maximum range with moderate latency:
+  
+  ```ini platformio.ini
+  [env:rx_sx128x_long_range]
+  platform = https://github.com/maxgerhardt/platform-raspberrypi.git
+  board = rpipicow
+  lib_ldf_mode = deep+
+  framework = arduino
+  board_build.core = earlephilhower
+  monitor_speed = 115200
+  lib_deps =
+      jgromes/RadioLib@^7.4.0
+      fastled/FastLED@^3.6.0
+  build_flags =
+      -DRX_SIDE=1
+      -DSX128X_FREQ_MHZ=2420.0
+      -DSX128X_OUTPUT_POWER_DBM=13
+      -DSX128X_FLRC_BR_KBPS=650
+      -DSX128X_FLRC_CR=2
+      -DSX128X_FLRC_PREAMBLE_BITS=32
+      # ... (other pin definitions)
+  ```
+</Accordion>
+
+<Accordion title="Low Latency Racing Configuration">
+  Optimize for minimum latency (default settings):
+  
+  ```ini platformio.ini
+  [env:rx_sx128x_racing]
+  platform = https://github.com/maxgerhardt/platform-raspberrypi.git
+  board = rpipicow
+  lib_ldf_mode = deep+
+  framework = arduino
+  board_build.core = earlephilhower
+  monitor_speed = 115200
+  lib_deps =
+      jgromes/RadioLib@^7.4.0
+      fastled/FastLED@^3.6.0
+  build_flags =
+      -DRX_SIDE=1
+      -DSX128X_FREQ_MHZ=2420.0
+      -DSX128X_OUTPUT_POWER_DBM=10
+      -DSX128X_FLRC_BR_KBPS=1300
+      -DSX128X_FLRC_CR=2
+      -DSX128X_FLRC_PREAMBLE_BITS=16
+      # ... (other pin definitions)
+  ```
+</Accordion>
+
+## Performance Characteristics
+
+### Range vs Bitrate
+
+| Bitrate | Typical Range (LOS) | Latency | Use Case |
+|---------|---------------------|---------|----------|
+| 260 kbps | 3-4 km | ~10 ms | Long-range cruising |
+| 650 kbps | 2-3 km | ~5 ms | Long-range flying |
+| 1300 kbps | 1-2 km | ~3 ms | Racing, freestyle |
+
+<Note>
+Range estimates assume good antennas, clear line-of-sight, and minimal interference. Actual range may vary significantly based on environment, antenna quality, and RF conditions.
+</Note>
+
+### RSSI Guidelines
+
+- **> -70 dBm**: Excellent signal
+- **-70 to -85 dBm**: Good signal
+- **-85 to -95 dBm**: Fair signal (usable)
+- **< -95 dBm**: Poor signal (may experience packet loss)
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Radio initialization fails">
+    - Verify all SPI pin connections (SCK, MOSI, MISO, CS)
+    - Check BUSY, DIO1, and RST pin connections
+    - Ensure proper 3.3V power supply to radio module
+    - Check serial monitor for specific error codes
+    - Try reducing SPI clock speed if wiring is long
+  </Accordion>
+  
+  <Accordion title="Poor range or frequent disconnects">
+    - Check RSSI values (should be > -90 dBm for reliable connection)
+    - Verify antenna is properly connected
+    - Try increasing output power (up to 13 dBm)
+    - Consider lowering bitrate (650 kbps instead of 1300 kbps)
+    - Check for 2.4 GHz interference (WiFi, BLE devices)
+    - Ensure clear line-of-sight between TX and RX
+  </Accordion>
+  
+  <Accordion title="High latency">
+    - Verify FLRC bitrate is set to 1300 kbps
+    - Check that UART baudrate is 420000 (not 115200)
+    - Monitor packet statistics for excessive retransmissions
+    - Ensure radio is not spending too much time in pairing/sync modes
+  </Accordion>
+  
+  <Accordion title="TX and RX won't connect">
+    - Ensure both devices use the same frequency (SX128X_FREQ_MHZ)
+    - Verify both use the same FLRC parameters (bitrate, coding rate)
+    - Check that both devices have the same binding phrase
+    - Monitor serial output for pairing status
+    - Try putting RX in pairing mode manually (hold BOOTSEL for 5 seconds)
+  </Accordion>
+</AccordionGroup>
+
+## See Also
+
+- [Build Flags Reference](/configuration/build-flags) - Complete list of all configuration flags
+- [Pairing Process](/configuration/pairing) - How to pair TX and RX devices
+- [UART Protocol](/configuration/uart-protocol) - RC board to TX module communication

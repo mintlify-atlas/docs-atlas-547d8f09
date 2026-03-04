@@ -1,0 +1,135 @@
+---
+title: Introduction
+description: Overview of XLRS, a 2.4GHz radio-based remote control system for FPV drones
+---
+
+## What is XLRS?
+
+XLRS is a 2.4GHz radio-based remote control system for FPV drones built on Raspberry Pi Pico (RP2040) boards with SX1280 radio modules. The system provides a reliable, low-latency communication link between your RC controller and drone flight controller using CRSF protocol.
+
+<Note>
+XLRS replaces the previous BLE-based implementation. The SX1280 radio provides better range, lower latency, and more reliable communication compared to BLE.
+</Note>
+
+## Architecture Overview
+
+The system uses a split architecture with three main components:
+
+<CardGroup cols={3}>
+  <Card title="RC Board" icon="gamepad">
+    Reads analog inputs (joysticks, switches) and sends channel data to TX module via UART
+  </Card>
+  <Card title="TX Module" icon="tower-broadcast">
+    Receives channels from RC board via UART and transmits over SX1280 radio to RX
+  </Card>
+  <Card title="RX Module" icon="satellite-dish">
+    Receives radio signals from TX and outputs CRSF to flight controller
+  </Card>
+</CardGroup>
+
+### Communication Flow
+
+```
+RC Board (Inputs) → UART (420kbps) → TX Module → SX1280 Radio (2.4GHz) → RX Module → CRSF (420kbps) → Flight Controller
+                                                                                        ↓
+                                                                              Battery Telemetry (CRSF)
+                                                                                        ↓
+RC Board (Display) ← UART Telemetry ← TX Module ← SX1280 Radio ← RX Module ← Flight Controller
+```
+
+## Key Features
+
+### Radio Performance
+- **Frequency**: 2.4GHz (2420 MHz default)
+- **Modulation**: FLRC (Fast Long Range Communication)
+- **Bitrate**: 1300 kbps
+- **Output Power**: 10 dBm (configurable up to 13 dBm)
+- **Range**: 1-2 km line-of-sight
+- **Update Rate**: ~50Hz channel data transmission
+
+### Security
+- **Binding phrase-based pairing** for secure device matching
+- **AES-128 encryption** for channel data
+- **HMAC-SHA256 authentication** (truncated to 4 bytes)
+- **Sequence number protection** against replay attacks
+- **Device ID validation** for each packet
+- Pairing keys stored in EEPROM for automatic reconnection
+
+### Protocol Support
+- **CRSF output**: Standard 420000 baud CRSF protocol
+- **16 channels**: 8 active from radio, 8 centered at 1500µs
+- **Bidirectional telemetry**: Battery voltage, current, and percentage from flight controller
+- **UART protocol**: High-speed 420000 baud with CRC8 checksums
+- Compatible with Betaflight, ELRS, and other CRSF receivers
+
+### Telemetry
+- **RSSI**: Signal strength in dBm
+- **SNR**: Signal-to-noise ratio in dB
+- **Battery**: Voltage, current, and percentage from flight controller
+- **Link quality**: 0-100% calculated from RSSI
+- **5Hz update rate** for battery telemetry
+
+## Why Use XLRS?
+
+<AccordionGroup>
+  <Accordion title="Open Source & Customizable">
+    Built on the RP2040 platform with fully open firmware. Customize frequencies, power levels, pin configurations, and protocols through build flags in `platformio.ini`.
+  </Accordion>
+  
+  <Accordion title="Low Latency">
+    50Hz channel update rate with direct SX1280 radio communication and high-speed 420kbps UART protocol ensures minimal latency for responsive control.
+  </Accordion>
+  
+  <Accordion title="Secure Communication">
+    Binding phrase-based pairing with AES-128 encryption, HMAC authentication, and sequence number validation ensures secure and reliable communication.
+  </Accordion>
+  
+  <Accordion title="Standard CRSF Protocol">
+    Compatible with Betaflight, ELRS, and any flight controller that supports CRSF receivers. No custom flight controller firmware required.
+  </Accordion>
+  
+  <Accordion title="Affordable Hardware">
+    Built on Raspberry Pi Pico boards (~$4) and readily available SX1280 modules. All components can be sourced from common electronics suppliers.
+  </Accordion>
+  
+  <Accordion title="Bidirectional Telemetry">
+    Real-time battery telemetry from flight controller displayed on RC board OLED, including voltage, current, and remaining percentage.
+  </Accordion>
+</AccordionGroup>
+
+## Channel Mapping
+
+The RC board sends 8 channels to the flight controller:
+
+| Channel | Function | Range |
+|---------|----------|-------|
+| 0 | Aileron | 1000-2000µs |
+| 1 | Elevator | 1000-2000µs |
+| 2 | Rudder | 1000-2000µs |
+| 3 | Throttle | 1000-2000µs |
+| 4 | Aux1 | 1000/2000µs |
+| 5 | Aux2 | 1000/2000µs |
+| 6 | Aux3 | 1000/2000µs |
+| 7 | Aux4 | 1000/2000µs |
+
+<Note>
+The TX module forwards channel data from the RC board over radio without modification. Channel mapping is determined by the RC board implementation.
+</Note>
+
+## Connection States
+
+The system uses a robust state machine for connection management:
+
+- **DISCONNECTED**: Initial state, waiting for pairing
+- **PAIRING**: Exchanging pairing packets with binding UID
+- **CONNECTING**: Paired, establishing connection via SYNC handshake  
+- **CONNECTED**: Active link, transmitting channel data
+- **LOST**: Connection timeout detected, attempting to reconnect
+
+Connection loss is detected by monitoring SYNC_ACK reception with hysteresis (3 missed sync ACKs) to prevent false disconnects.
+
+## Next Steps
+
+<Card title="Quick Start" icon="rocket" href="/quickstart">
+  Follow the step-by-step guide to build and flash your first XLRS system
+</Card>

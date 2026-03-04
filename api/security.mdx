@@ -1,0 +1,500 @@
+---
+title: 'Security'
+description: 'Encryption, authentication, and device pairing management'
+---
+
+## Overview
+
+The `Security` class provides cryptographic functions for secure radio communication, including AES-128 encryption, HMAC authentication, device ID management, and binding phrase support.
+
+## Class Definition
+
+Location: `lib/Security/Security.h`
+
+```cpp
+class Security {
+public:
+    Security();
+    
+    bool begin();
+    
+    // Pairing key management
+    bool generatePairingKey();
+    bool setPairingKey(const uint8_t* key);
+    bool getPairingKey(uint8_t* key);
+    bool hasPairingKey();
+    
+    // HMAC authentication
+    void calculateHMAC(const uint8_t* data, size_t dataLen, uint8_t* hmac);
+    bool verifyHMAC(const uint8_t* data, size_t dataLen, const uint8_t* hmac);
+    
+    // Device ID management
+    bool generateDeviceId();
+    bool getDeviceId(uint8_t* deviceId);
+    bool setPairedDeviceId(const uint8_t* deviceId);
+    bool getPairedDeviceId(uint8_t* deviceId);
+    bool hasPairedDeviceId();
+    
+    // Encryption/Decryption
+    bool encrypt(const uint8_t* plaintext, size_t len, uint8_t* ciphertext, 
+                 uint16_t sequence, const uint8_t* deviceId);
+    bool decrypt(const uint8_t* ciphertext, size_t len, uint8_t* plaintext, 
+                 uint16_t sequence, const uint8_t* deviceId);
+    
+    // Binding phrase UID
+    bool generateBindingUID(const char* bindingPhrase);
+    bool getBindingUID(uint8_t* uid);
+    bool hasBindingUID();
+    bool verifyBindingUID(const uint8_t* uid);
+    
+    // Hardware device ID (RP2040)
+    bool loadDeviceIdFromSilicon();
+};
+```
+
+## Constants
+
+```cpp
+#define PAIRING_KEY_SIZE 16        // AES-128 key
+#define HMAC_SIZE 4                // Truncated HMAC
+#define DEVICE_ID_SIZE 8           // Device identifier
+#define BINDING_UID_SIZE 8         // Binding phrase UID
+#define DEFAULT_BINDING_PHRASE "FPV-DEFAULT-2024"
+```
+
+## Methods
+
+### begin()
+
+Initializes security module, loads or generates keys and device IDs.
+
+```cpp
+bool begin();
+```
+
+<ParamField path="return" type="bool">
+  Returns `true` if initialization successful
+</ParamField>
+
+**Example:**
+
+From `src/rx_main_sx128x.cpp:153`:
+
+```cpp
+Security security;
+
+if (security.begin()) {
+    Serial.println("Security initialized");
+    
+    // Get this device's ID
+    if (security.getDeviceId(rxDeviceId)) {
+        Serial.print("RX Device ID: ");
+        for (int i = 0; i < DEVICE_ID_SIZE; i++) {
+            if (rxDeviceId[i] < 0x10) Serial.print("0");
+            Serial.print(rxDeviceId[i], HEX);
+        }
+        Serial.println();
+    }
+} else {
+    Serial.println("Security initialization failed!");
+}
+```
+
+### generatePairingKey()
+
+Generates a new random pairing key and stores it in EEPROM.
+
+```cpp
+bool generatePairingKey();
+```
+
+<ParamField path="return" type="bool">
+  Returns `true` if key generated successfully
+</ParamField>
+
+### setPairingKey()
+
+Sets a specific pairing key.
+
+```cpp
+bool setPairingKey(const uint8_t* key);
+```
+
+<ParamField path="key" type="const uint8_t*">
+  16-byte pairing key
+</ParamField>
+
+<ParamField path="return" type="bool">
+  Returns `true` if key set successfully
+</ParamField>
+
+### hasPairingKey()
+
+Checks if a pairing key exists.
+
+```cpp
+bool hasPairingKey();
+```
+
+<ParamField path="return" type="bool">
+  Returns `true` if pairing key is loaded
+</ParamField>
+
+**Example:**
+
+```cpp
+if (security.hasPairingKey() && hasPairedTxId) {
+    Serial.println("Device is paired");
+}
+```
+
+### calculateHMAC()
+
+Calculates truncated HMAC-SHA256 (4 bytes) for data authentication.
+
+```cpp
+void calculateHMAC(const uint8_t* data, size_t dataLen, uint8_t* hmac);
+```
+
+<ParamField path="data" type="const uint8_t*">
+  Data to authenticate
+</ParamField>
+
+<ParamField path="dataLen" type="size_t">
+  Length of data in bytes
+</ParamField>
+
+<ParamField path="hmac" type="uint8_t*">
+  Output buffer for 4-byte HMAC
+</ParamField>
+
+**Example:**
+
+```cpp
+uint8_t hmac[HMAC_SIZE];
+security.calculateHMAC(frameData, frameLen, hmac);
+```
+
+### verifyHMAC()
+
+Verifies HMAC for received data.
+
+```cpp
+bool verifyHMAC(const uint8_t* data, size_t dataLen, const uint8_t* hmac);
+```
+
+<ParamField path="data" type="const uint8_t*">
+  Data to verify
+</ParamField>
+
+<ParamField path="dataLen" type="size_t">
+  Length of data in bytes
+</ParamField>
+
+<ParamField path="hmac" type="const uint8_t*">
+  4-byte HMAC to verify
+</ParamField>
+
+<ParamField path="return" type="bool">
+  Returns `true` if HMAC is valid
+</ParamField>
+
+### getDeviceId()
+
+Retrieves this device's unique ID.
+
+```cpp
+bool getDeviceId(uint8_t* deviceId);
+```
+
+<ParamField path="deviceId" type="uint8_t*">
+  Output buffer for 8-byte device ID
+</ParamField>
+
+<ParamField path="return" type="bool">
+  Returns `true` if device ID available
+</ParamField>
+
+**Example:**
+
+```cpp
+uint8_t txDeviceId[DEVICE_ID_SIZE];
+if (security.getDeviceId(txDeviceId)) {
+    Serial.print("TX Device ID: ");
+    for (int i = 0; i < DEVICE_ID_SIZE; i++) {
+        if (txDeviceId[i] < 0x10) Serial.print("0");
+        Serial.print(txDeviceId[i], HEX);
+    }
+    Serial.println();
+}
+```
+
+### setPairedDeviceId()
+
+Stores the device ID of paired remote device.
+
+```cpp
+bool setPairedDeviceId(const uint8_t* deviceId);
+```
+
+<ParamField path="deviceId" type="const uint8_t*">
+  8-byte device ID to store
+</ParamField>
+
+<ParamField path="return" type="bool">
+  Returns `true` if stored successfully
+</ParamField>
+
+### getPairedDeviceId()
+
+Retrieves paired device ID from EEPROM.
+
+```cpp
+bool getPairedDeviceId(uint8_t* deviceId);
+```
+
+<ParamField path="deviceId" type="uint8_t*">
+  Output buffer for 8-byte device ID
+</ParamField>
+
+<ParamField path="return" type="bool">
+  Returns `true` if paired device ID exists
+</ParamField>
+
+**Example:**
+
+From `src/rx_main_sx128x.cpp:182`:
+
+```cpp
+if (security.getPairedDeviceId(pairedTxDeviceId)) {
+    hasPairedTxId = true;
+    Serial.print("Paired TX Device ID: ");
+    for (int i = 0; i < DEVICE_ID_SIZE; i++) {
+        if (pairedTxDeviceId[i] < 0x10) Serial.print("0");
+        Serial.print(pairedTxDeviceId[i], HEX);
+    }
+    Serial.println();
+}
+```
+
+### encrypt()
+
+Encrypts data using AES-128 with sequence number and device ID as IV.
+
+```cpp
+bool encrypt(const uint8_t* plaintext, size_t len, uint8_t* ciphertext,
+             uint16_t sequence, const uint8_t* deviceId);
+```
+
+<ParamField path="plaintext" type="const uint8_t*">
+  Data to encrypt
+</ParamField>
+
+<ParamField path="len" type="size_t">
+  Length of data in bytes
+</ParamField>
+
+<ParamField path="ciphertext" type="uint8_t*">
+  Output buffer for encrypted data
+</ParamField>
+
+<ParamField path="sequence" type="uint16_t">
+  Sequence number for IV
+</ParamField>
+
+<ParamField path="deviceId" type="const uint8_t*">
+  8-byte device ID for IV
+</ParamField>
+
+<ParamField path="return" type="bool">
+  Returns `true` if encryption successful
+</ParamField>
+
+### decrypt()
+
+Decrypts AES-128 encrypted data.
+
+```cpp
+bool decrypt(const uint8_t* ciphertext, size_t len, uint8_t* plaintext,
+             uint16_t sequence, const uint8_t* deviceId);
+```
+
+<ParamField path="ciphertext" type="const uint8_t*">
+  Encrypted data
+</ParamField>
+
+<ParamField path="len" type="size_t">
+  Length of encrypted data
+</ParamField>
+
+<ParamField path="plaintext" type="uint8_t*">
+  Output buffer for decrypted data
+</ParamField>
+
+<ParamField path="sequence" type="uint16_t">
+  Sequence number for IV
+</ParamField>
+
+<ParamField path="deviceId" type="const uint8_t*">
+  8-byte device ID for IV
+</ParamField>
+
+<ParamField path="return" type="bool">
+  Returns `true` if decryption successful
+</ParamField>
+
+### generateBindingUID()
+
+Generates a binding UID from a phrase (like ExpressLRS binding phrase).
+
+```cpp
+bool generateBindingUID(const char* bindingPhrase);
+```
+
+<ParamField path="bindingPhrase" type="const char*">
+  Binding phrase string
+</ParamField>
+
+<ParamField path="return" type="bool">
+  Returns `true` if UID generated successfully
+</ParamField>
+
+**Example:**
+
+```cpp
+security.generateBindingUID("FPV-DEFAULT-2024");
+```
+
+### getBindingUID()
+
+Retrieves the binding UID.
+
+```cpp
+bool getBindingUID(uint8_t* uid);
+```
+
+<ParamField path="uid" type="uint8_t*">
+  Output buffer for 8-byte UID
+</ParamField>
+
+<ParamField path="return" type="bool">
+  Returns `true` if UID available
+</ParamField>
+
+**Example:**
+
+From `src/rx_main_sx128x.cpp:167`:
+
+```cpp
+uint8_t bindingUID[BINDING_UID_SIZE];
+if (security.getBindingUID(bindingUID)) {
+    Serial.print("Binding UID: ");
+    for (int i = 0; i < BINDING_UID_SIZE; i++) {
+        if (bindingUID[i] < 0x10) Serial.print("0");
+        Serial.print(bindingUID[i], HEX);
+    }
+    Serial.print(" (from phrase: ");
+    Serial.print(DEFAULT_BINDING_PHRASE);
+    Serial.println(")");
+}
+```
+
+### verifyBindingUID()
+
+Verifies a binding UID matches the stored one.
+
+```cpp
+bool verifyBindingUID(const uint8_t* uid);
+```
+
+<ParamField path="uid" type="const uint8_t*">
+  8-byte UID to verify
+</ParamField>
+
+<ParamField path="return" type="bool">
+  Returns `true` if UID matches
+</ParamField>
+
+### loadDeviceIdFromSilicon()
+
+Loads unique device ID from RP2040 silicon (chip ID).
+
+```cpp
+bool loadDeviceIdFromSilicon();
+```
+
+<ParamField path="return" type="bool">
+  Returns `true` if loaded successfully (RP2040 only)
+</ParamField>
+
+## EEPROM Storage Layout
+
+```cpp
+#define SECURITY_MAGIC_ADDR 120        // 4 bytes magic value
+#define PAIRING_KEY_ADDR 128           // 16 bytes pairing key
+#define DEVICE_ID_ADDR 144             // 8 bytes device ID
+#define PAIRED_DEVICE_ID_ADDR 152      // 8 bytes paired device ID
+#define BINDING_UID_ADDR 160           // 8 bytes binding UID
+```
+
+## Security Features
+
+### Pairing Process
+
+1. Each device has a unique 8-byte device ID (from silicon or generated)
+2. TX and RX share a 16-byte pairing key (exchanged during pairing)
+3. Binding phrase generates an 8-byte UID for initial pairing verification
+4. After pairing, devices store each other's device IDs
+
+### Packet Authentication
+
+- All packets include 4-byte truncated HMAC-SHA256
+- HMAC computed over: device ID + channel data + sequence number
+- Prevents replay attacks and unauthorized transmitters
+
+### Encryption
+
+- AES-128 encryption for channel data
+- IV derived from sequence number + device ID
+- Prevents eavesdropping on RC commands
+
+## Complete Usage Example
+
+From `src/tx_main_sx128x.cpp:104`:
+
+```cpp
+Security security;
+uint8_t txDeviceId[DEVICE_ID_SIZE];
+uint8_t pairedRxDeviceId[DEVICE_ID_SIZE];
+bool hasPairedRxId = false;
+
+void setup() {
+    if (security.begin()) {
+        Serial.println("Security initialized");
+        
+        // Get this device's ID
+        security.getDeviceId(txDeviceId);
+        
+        // Get binding UID
+        uint8_t bindingUID[BINDING_UID_SIZE];
+        if (security.getBindingUID(bindingUID)) {
+            Serial.print("Binding UID: ");
+            for (int i = 0; i < BINDING_UID_SIZE; i++) {
+                Serial.print(bindingUID[i], HEX);
+            }
+            Serial.println();
+        }
+        
+        // Check if paired
+        if (security.getPairedDeviceId(pairedRxDeviceId)) {
+            hasPairedRxId = true;
+            Serial.println("Already paired");
+        }
+    }
+}
+```
+
+## See Also
+
+- [Protocol](/api/protocol) - Uses Security for packet encoding/decoding
+- [Pairing](/api/protocol#pairing) - Pairing process implementation

@@ -1,0 +1,476 @@
+---
+title: Debugging
+description: Using serial monitor, interpreting logs, and testing hardware
+---
+
+This page explains how to use diagnostic tools to troubleshoot XLRS issues.
+
+## Serial Monitor Setup
+
+### Connecting to Serial Output
+
+All XLRS modules output diagnostic information via USB serial at **115200 baud**.
+
+<Steps>
+  <Step title="Connect USB Cable">
+    Connect the Raspberry Pi Pico to your computer via USB.
+  </Step>
+  <Step title="Open Serial Monitor">
+    Use PlatformIO Serial Monitor, Arduino IDE Serial Monitor, or a terminal program:
+    - **Baudrate**: 115200
+    - **Line ending**: Newline (LF) or CR+LF
+    - **Port**: Auto-detected (e.g., `/dev/ttyACM0`, `COM3`)
+  </Step>
+  <Step title="Power Cycle Device">
+    Press the RESET button on the Pico to restart and see boot messages.
+  </Step>
+</Steps>
+
+<Accordion title="PlatformIO Serial Monitor">
+  ```bash
+  # Open serial monitor for specific environment
+  pio device monitor -e tx_sx128x
+  pio device monitor -e rx_sx128x
+  pio device monitor -e rc-crsf
+  ```
+</Accordion>
+
+<Accordion title="Manual Serial Monitor (screen/minicom)">
+  ```bash
+  # Linux/macOS
+  screen /dev/ttyACM0 115200
+  # or
+  minicom -D /dev/ttyACM0 -b 115200
+
+  # Exit screen: Ctrl+A, then K
+  ```
+</Accordion>
+
+## Interpreting Boot Messages
+
+### TX Module Boot Sequence
+
+```
+=== FPV Transmitter (SX128x) ===
+Receiving channels from RC board via UART
+Initializing security...
+Security initialized
+TX Device ID: A1B2C3D4E5F6G7H8
+Binding UID: 1A2B3C4D5E6F7080 (from phrase: FPV_BIND_2024)
+Paired RX Device ID: 8H7G6F5E4D3C2B1A
+Already paired - ready to connect
+Initializing radio...
+SX128x ready
+Initializing UART protocol...
+UART Protocol on Serial2: TX=GP8, RX=GP9
+=== TX Ready ===
+Radio ready - waiting for channels from RC board
+```
+
+<Accordion title="What to Check in TX Boot Messages">
+  **Security initialized:**
+  - Confirms security module loaded successfully
+  - Device ID and binding UID generated/loaded
+
+  **TX Device ID:**
+  - Unique 8-byte identifier for this TX
+  - Stored in EEPROM, persistent across reboots
+
+  **Binding UID:**
+  - Derived from `DEFAULT_BINDING_PHRASE`
+  - Must match RX binding UID for pairing
+  - Verify the phrase shown matches your expectation
+
+  **Paired RX Device ID:**
+  - If shown: TX has been paired before
+  - If missing: TX will enter pairing mode automatically
+
+  **SX128x ready:**
+  - Radio initialized successfully
+  - If you see "SX128x init failed", check wiring
+
+  **UART Protocol:**
+  - TX/RX pins for communication with RC board
+  - Default: TX=GP8, RX=GP9
+</Accordion>
+
+### RX Module Boot Sequence
+
+```
+=== FPV Receiver (SX128x) ===
+Initializing...
+Security initialized
+RX Device ID: 8H7G6F5E4D3C2B1A
+Binding UID: 1A2B3C4D5E6F7080 (from phrase: FPV_BIND_2024)
+Paired TX Device ID: A1B2C3D4E5F6G7H8
+Already paired - ready to connect
+SX128x ready
+Initializing CRSF...
+CRSF on Serial2: TX=GP8, RX=GP9
+WS2812 LED initialized on GPIO13
+=== RX Ready ===
+Hold BOOTSEL for 5 seconds to enter pairing mode
+```
+
+<Accordion title="What to Check in RX Boot Messages">
+  **Security initialized:**
+  - Security module loaded successfully
+
+  **RX Device ID:**
+  - Unique 8-byte identifier for this RX
+
+  **Binding UID:**
+  - Must match TX binding UID exactly
+  - If different, pairing will fail
+
+  **Paired TX Device ID:**
+  - If shown: RX has been paired before
+  - If missing: RX is unpaired, use BOOTSEL to enter pairing mode
+
+  **CRSF on Serial2:**
+  - CRSF output pins
+  - Default: TX=GP8 (to FC), RX=GP9 (from FC)
+  - Baudrate: 420000 (not shown, but always this value)
+</Accordion>
+
+## Understanding Log Messages
+
+### Connection State Logs
+
+<Accordion title="State Transitions">
+  **Format:**
+  ```
+  [STATE] <OLD_STATE> -> <NEW_STATE>
+  ```
+
+  **Examples:**
+  ```
+  [STATE] DISCONNECTED -> PAIRING
+  [STATE] PAIRING -> CONNECTING
+  [STATE] CONNECTING -> CONNECTED
+  [STATE] CONNECTED -> LOST (missed sync ACKs)
+  [STATE] LOST -> CONNECTING (reconnecting)
+  ```
+
+  **What they mean:**
+  - **DISCONNECTED → PAIRING**: Entering pairing mode
+  - **PAIRING → CONNECTING**: Pairing successful, attempting connection
+  - **CONNECTING → CONNECTED**: Connection established
+  - **CONNECTED → LOST**: Connection timeout or sync failure
+  - **LOST → CONNECTING**: Attempting to reconnect
+</Accordion>
+
+<Accordion title="Periodic State Updates">
+  Every 10 seconds, current state is logged:
+  ```
+  [STATE] Current: CONNECTED (RSSI: -65, SNR: 9.5)
+  ```
+
+  **Key metrics:**
+  - **RSSI** (Received Signal Strength Indicator): In dBm, closer to 0 is better
+    - Excellent: > -60 dBm
+    - Good: -60 to -80 dBm
+    - Fair: -80 to -100 dBm
+    - Poor: < -100 dBm
+  - **SNR** (Signal-to-Noise Ratio): In dB, higher is better
+    - Good: > 5 dB
+    - Fair: 0 to 5 dB
+    - Poor: < 0 dB
+</Accordion>
+
+### Pairing Logs
+
+<Accordion title="RX Pairing Mode">
+  ```
+  [PAIR] BOOTSEL pressed (waiting for hold to enter pairing)
+  [PAIR] BOOTSEL hold detected, entering pairing mode
+  *** PAIRING MODE ACTIVE ***
+  Waiting for TX to send pairing key...
+  Timeout in 60 seconds
+  ```
+
+  Or auto-pairing:
+  ```
+  [PAIR] Auto-entering pairing mode (timeout reached)
+  ```
+</Accordion>
+
+<Accordion title="TX Sending Pairing Packets">
+  ```
+  [TX] Sent pairing packet (UID + TX ID + key), UID: 1A2B3C4D5E6F7080
+  ```
+
+  This message repeats every 2 seconds while in pairing mode.
+</Accordion>
+
+<Accordion title="RX Receiving Pairing">
+  **Success:**
+  ```
+  [RX] Binding UID verified - accepting pairing
+  [RX] Pairing key and TX device ID saved
+  [RX] Pairing key fingerprint: A1B2C3D4
+  [RX] Sent pairing ACK with RX device ID
+  *** PAIRING SUCCESSFUL ***
+  ```
+
+  **Failure (UID mismatch):**
+  ```
+  [RX] Pairing rejected - binding UID mismatch!
+  [RX] Received UID: XXXXXXXXXXXXXXXX
+  ```
+</Accordion>
+
+<Accordion title="TX Receiving Pairing ACK">
+  ```
+  [TX] Pairing successful - RX device ID stored
+  [TX] RX Device ID: 8H7G6F5E4D3C2B1A
+  [TX] Pairing key fingerprint: A1B2C3D4
+  ```
+
+  **Verify fingerprints match on TX and RX!**
+</Accordion>
+
+### Channel Data Logs
+
+<Accordion title="RX Receiving Channels">
+  ```
+  [RX] Channels: 1500 1500 1000 1000 1000 1000 1500 1500  Seq: 123 RSSI: -65 SNR: 9.5
+  ```
+
+  Logged every 1 second when receiving valid channel data.
+
+  **Check:**
+  - Channel values in expected range (1000-2000)
+  - Sequence number incrementing
+  - RSSI and SNR acceptable
+</Accordion>
+
+<Accordion title="Invalid Frames">
+  ```
+  [RX] Invalid channel frame (device ID mismatch / HMAC / decrypt)
+  ```
+
+  Causes:
+  - Device ID mismatch (unpaired or wrong pairing)
+  - HMAC validation failure (corrupted packet or wrong key)
+  - Decryption failure
+
+  If frequent, re-pair devices.
+</Accordion>
+
+### CRSF Output Logs
+
+<Accordion title="RX Sending CRSF Frames">
+  ```
+  [CRSF OUT] sent RC frame #123 ch0=1500 ch1=1500 txPin=GP8 rxPin=GP9
+  ```
+
+  Logged every 2 seconds.
+
+  **What to check:**
+  - Frame counter incrementing (frames are being sent)
+  - Channel values match received values from TX
+  - TX/RX pins correct for your wiring
+
+  If you see this but FC shows no input:
+  - Check FC UART configuration (serial port enabled, 420000 baud)
+  - Try swapping TX/RX wires
+</Accordion>
+
+### Battery Telemetry Logs
+
+<Accordion title="RX Receiving Battery from FC">
+  ```
+  [BATTERY] V:16.8 A:2.5 Rem:85%
+  ```
+
+  Logged every 10 seconds when FC sends battery telemetry via CRSF.
+
+  If not appearing:
+  - FC may not send battery telemetry
+  - CRSF RX not connected (GP9 from FC TX)
+  - FC battery sensor not configured
+</Accordion>
+
+<Accordion title="TX Receiving Battery from RX">
+  ```
+  [TELEM] RX Batt 16.8V 85%
+  ```
+
+  TX receives battery info from RX over radio, forwarded to RC board.
+</Accordion>
+
+### Sync Packet Logs
+
+<Accordion title="RX Seeing Sync Packets">
+  ```
+  [SYNC] RX saw MSG_SYNC pktLen=33 payloadLen=32 payload0=0x05
+  ```
+
+  Logged every 2 seconds when RX receives SYNC packets from TX.
+
+  Confirms:
+  - Radio communication working
+  - TX sending sync
+  - Packet format correct
+</Accordion>
+
+<Accordion title="TX Sync Issues">
+  ```
+  [SYNC] RX ID mismatch in SYNC_ACK (len=X) src=XXXXXXXX expected=YYYYYYYY
+  ```
+
+  Device IDs don't match. Re-pair devices.
+
+  ```
+  [SYNC] parseSyncAck FAILED payloadLen=X keyLoaded=Y
+  ```
+
+  SYNC_ACK parsing failed:
+  - Packet corrupted
+  - Wrong encryption key
+  - HMAC validation failed
+</Accordion>
+
+## Testing Hardware Components
+
+### Testing SX1280 Radio
+
+<Accordion title="Basic Radio Test">
+  1. Upload firmware to device
+  2. Check serial output for:
+     ```
+     SX128x ready
+     ```
+
+  If "SX128x init failed":
+  - Verify wiring (see [Common Issues](/troubleshooting/common-issues#radio-not-initializing))
+  - Check SPI communication
+  - Test with different SX1280 module (may be defective)
+</Accordion>
+
+<Accordion title="Loopback Test (Advanced)">
+  Create a test sketch that sends and receives on the same device:
+  ```cpp
+  // Send test packet
+  uint8_t testData[] = {0x01, 0x02, 0x03};
+  radio.send(testData, 3);
+  delay(100);
+  
+  // Try to receive (won't work without second radio)
+  SX128xPacket pkt;
+  if (radio.receive(pkt)) {
+    Serial.println("Received packet");
+  }
+  ```
+
+  This won't receive its own transmission (half-duplex), but confirms send works.
+</Accordion>
+
+### Testing UART Communication
+
+<Accordion title="TX ↔ RC Board UART Test">
+  **On TX serial monitor:**
+  - Should see channel updates when RC board sends data
+  - No "UART timeout" or "CRC error" messages
+
+  **Test with loopback:**
+  - Disconnect RC board
+  - Connect TX module GP8 to GP9 (loopback)
+  - TX should receive its own telemetry messages
+  - Confirms UART hardware working
+</Accordion>
+
+<Accordion title="RX → FC CRSF Test">
+  **Check RX serial output:**
+  ```
+  [CRSF OUT] sent RC frame #123 ch0=1500 ch1=1500
+  ```
+
+  Frames being sent. If FC doesn't respond:
+  - Use logic analyzer or oscilloscope on GP8
+  - Should see 420000 baud UART signal
+  - Verify FC UART port enabled and configured for CRSF
+</Accordion>
+
+### Testing Pairing Button (RX)
+
+<Accordion title="BOOTSEL Button Test">
+  **Monitor RX serial output:**
+  ```
+  [PAIR] BOOTSEL state: PRESSED
+  [PAIR] BOOTSEL state: released
+  ```
+
+  Logged every 1 second when not paired.
+
+  If no messages:
+  - BOOTSEL reading code may be faulty
+  - Check RP2040 hardware
+  - Try different Pico board
+</Accordion>
+
+## Diagnostic Commands (UART Protocol)
+
+The RC board can send diagnostic commands to the TX module:
+
+<Accordion title="Available Commands">
+  **From RC board to TX:**
+  - `UART_MSG_CMD_PAIR` (0x10): Force TX into pairing mode
+  - `UART_MSG_CMD_BOND` (0x11): Check if paired
+  - `UART_MSG_CMD_RESTART` (0x12): Restart TX module
+  - `UART_MSG_CMD_STATUS_REQ` (0x13): Request status update
+  - `UART_MSG_PING` (0x14): Check if TX is alive
+
+  **TX responses:**
+  - `UART_MSG_ACK` (0x22): Command acknowledged
+  - `UART_MSG_ERROR` (0x23): Command failed
+  - `UART_MSG_PONG` (0x15): Response to PING
+  - `UART_MSG_STATUS` (0x21): Status data
+  - `UART_MSG_TELEMETRY` (0x20): Telemetry data
+</Accordion>
+
+<Accordion title="TX Serial Output for Commands">
+  ```
+  [UART] PAIR command received
+  [UART] BOND command received
+  [UART] RESTART command received
+  [UART] STATUS_REQ command received
+  ```
+
+  Commands logged when received from RC board.
+</Accordion>
+
+## Log Output Frequency
+
+Understanding how often messages appear:
+
+<CardGroup cols={2}>
+  <Card title="Every 50ms" icon="gauge-high">
+    - Channel data transmission (50Hz)
+    - CRSF frame output (50Hz)
+  </Card>
+  <Card title="Every 200ms" icon="gauge">
+    - Battery telemetry (5Hz)
+    - UART telemetry to RC board (5Hz)
+  </Card>
+  <Card title="Every 1 second" icon="clock">
+    - Channel data log (RX)
+    - Status updates (UART)
+    - BOOTSEL state (when not paired)
+  </Card>
+  <Card title="Every 2 seconds" icon="clock">
+    - CRSF output log
+    - Pairing packet send log
+    - Sync packet visibility log
+    - Error logs (rate-limited)
+  </Card>
+  <Card title="Every 10 seconds" icon="clock">
+    - Connection state log
+    - Battery telemetry log
+  </Card>
+</CardGroup>
+
+<Warning>
+  Serial output is flushed every 500ms. If the device crashes, the last 500ms of logs may be lost. Pay attention to the last message before silence.
+</Warning>

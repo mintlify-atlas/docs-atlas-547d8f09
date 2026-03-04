@@ -1,0 +1,159 @@
+---
+title: RC Board Hardware
+description: Hardware requirements and wiring for the XLRS RC controller board
+---
+
+The RC (remote control) board reads analog inputs from joysticks and switches, displays telemetry on an OLED screen, and sends channel data to the TX module via UART.
+
+## Hardware Components
+
+- **Microcontroller**: Raspberry Pi Pico (RP2040) or Pico 2 (RP2350)
+- **Display**: SH1106G OLED (128x64, I2C)
+- **ADC**: ADS1115 16-bit ADC module (I2C) OR RP2350 internal ADC
+- **Inputs**: 2× 2-axis analog joysticks (4 analog channels)
+- **Switches**: 4× 3-position toggle switches (8 digital inputs)
+- **Buttons**: 2× navigation/command buttons
+- **Battery Management**: BQ2562X charger IC (optional)
+- **Buzzer**: Piezo buzzer for audio feedback
+
+## I2C Bus Wiring
+
+The RC board uses I2C for the OLED display and ADS1115 ADC (if used).
+
+| Signal | RP2040 Pin | Description |
+|--------|------------|-------------|
+| I2C SDA | GP4 | I2C Data |
+| I2C SCL | GP5 | I2C Clock |
+| Speed | 400 kHz | Fast mode I2C |
+
+### I2C Device Addresses
+
+| Device | I2C Address | Description |
+|--------|-------------|-------------|
+| SH1106 OLED | 0x3C | Display (or 0x3D alternate) |
+| ADS1115 ADC | 0x48 | 16-bit ADC (configurable: 0x48-0x4B) |
+| BQ2562X Charger | 0x6A | Battery charger IC (optional) |
+
+<Warning>
+  Ensure all I2C devices use 3.3V logic levels. The RP2040 I2C pins are NOT 5V tolerant.
+</Warning>
+
+## Analog Input Wiring
+
+### Option 1: External ADS1115 ADC (RP2040)
+
+For standard Raspberry Pi Pico (RP2040), use an external ADS1115 16-bit ADC:
+
+| ADS1115 Channel | Function | CRSF Channel | Description |
+|-----------------|----------|--------------|-------------|
+| AIN0 | Stick 1 X | Ch0 | Aileron |
+| AIN1 | Stick 1 Y | Ch1 | Elevator |
+| AIN2 | Stick 2 X | Ch2 | Rudder |
+| AIN3 | Stick 2 Y | Ch3 | Throttle |
+
+**ADS1115 Configuration:**
+- **Gain**: GAIN_ONE (±4.096V range)
+- **Data Rate**: 250 SPS
+- **Resolution**: 16-bit (0-32767)
+
+### Option 2: Internal ADC (RP2350)
+
+For Raspberry Pi Pico 2 (RP2350), use the internal 12-bit ADC:
+
+| RP2350 Pin | ADC Channel | Function | CRSF Channel |
+|------------|-------------|----------|-------------|
+| GP26 | ADC0 | Stick 1 X | Ch0 (Aileron) |
+| GP27 | ADC1 | Stick 1 Y | Ch1 (Elevator) |
+| GP28 | ADC2 | Stick 2 X | Ch2 (Rudder) |
+| GP29 | ADC3 | Stick 2 Y | Ch3 (Throttle) |
+
+**Internal ADC Configuration:**
+- **Resolution**: 12-bit (0-4095), scaled to 16-bit internally
+- **Reference**: 3.3V
+
+<Note>
+  Enable internal ADC mode by adding `-DINTERNAL_ADC=1` to build flags in platformio.ini.
+</Note>
+
+## Toggle Switch Wiring
+
+The RC board uses 4 toggle switches with dual-pin reading for 3-position detection.
+
+| Switch | IN1 Pin | IN2 Pin | CRSF Channel | Logic |
+|--------|---------|---------|--------------|-------|
+| T1 | GP1 | GP2 | Ch4 (Aux1) | See below |
+| T2 | GP3 | GP6 | Ch5 (Aux2) | See below |
+| T3 | GP7 | GP10 | Ch6 (Aux3) | See below |
+| T4 | GP11 | GP12 | Ch7 (Aux4) | See below |
+
+**Toggle Switch Logic:**
+
+| IN1 State | IN2 State | Output Value |
+|-----------|-----------|-------------|
+| HIGH | LOW | 1000 µs |
+| LOW | HIGH | 2000 µs |
+| LOW | LOW | 1500 µs (center) |
+
+<Note>
+  All toggle switch pins are configured with internal pull-up resistors (INPUT_PULLUP).
+</Note>
+
+## Navigation Buttons
+
+| Button | RP2040 Pin | Function | Configuration |
+|--------|------------|----------|---------------|
+| Enter | GP13 | Send PAIR command | INPUT_PULLDOWN (active HIGH) |
+| Back | GP14 | Request status | INPUT_PULLDOWN (active HIGH) |
+| Power | GP19 | Enter shutdown mode | INPUT_PULLUP (active LOW) |
+
+## UART Connection to TX Module
+
+The RC board communicates with the TX module via high-speed UART.
+
+| Signal | RP2040 Pin | Direction | Description |
+|--------|------------|-----------|-------------|
+| UART TX | GP8 | Output | Send channel data to TX module |
+| UART RX | GP9 | Input | Receive telemetry from TX module |
+| Baudrate | 420000 | - | High-speed UART |
+
+<Warning>
+  **Critical wiring**: Connect the RC board's UART TX (GP8) to the TX module's UART RX (GP9), and the RC board's UART RX (GP9) to the TX module's UART TX (GP8).
+</Warning>
+
+## Additional Peripherals
+
+| Peripheral | Pin | Description |
+|------------|-----|-------------|
+| Buzzer | GP24 | Piezo buzzer (active HIGH) |
+| SPI SCK | GP18 | Reserved for future SPI display |
+| SPI MOSI | GP19 | Reserved for future SPI display |
+| SPI CS | GP21 | Reserved for future SPI display |
+
+## Display Output
+
+The OLED display shows:
+
+- **Line 1**: RC board name, TX battery voltage and percentage
+- **Line 2**: Charging status and VBUS status
+- **Line 3**: TX connection status, RSSI
+- **Line 4**: RX battery voltage/percentage or channel values
+
+## Power Requirements
+
+- **Operating Voltage**: 3.3V (or 5V via USB/VBUS)
+- **Current Draw**: ~150-200mA typical (RP2040 + OLED + ADS1115)
+- **Battery**: LiPo battery with BQ2562X charger IC (optional)
+
+## Calibration
+
+Stick calibration data is stored in EEPROM:
+
+- **EEPROM Address**: 150-200
+- **Calibration Data**: Min, max, and center values for each analog channel
+- **Default Values**: Min=2917, Max=23420, Center=13199 (16-bit ADC)
+
+## Next Steps
+
+- [TX Module Hardware](/hardware/tx-module) - Transmitter module wiring
+- [RX Module Hardware](/hardware/rx-module) - Receiver module wiring
+- [Complete Wiring Guide](/hardware/wiring) - Full system wiring diagrams

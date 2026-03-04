@@ -1,80 +1,334 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick Start
+description: Step-by-step guide to get a working XLRS system up and running
 ---
 
-## Get started in three steps
+This guide will walk you through building and flashing firmware for all three XLRS components: TX module, RX module, and RC board.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+Before you begin, ensure you have:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+- All required hardware (see [Hardware Requirements](/hardware-requirements))
+- A computer running Windows, macOS, or Linux
+- USB cables to connect Raspberry Pi Pico boards
+- Basic soldering skills for hardware assembly
 
-### Step 2: Deploy your changes
+<Steps>
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+<Step title="Assemble the Hardware">
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+### TX Module (Transmitter)
+Connect the SX1280 radio module to your Raspberry Pi Pico:
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+| Signal | Pico Pin | Description |
+|--------|----------|-------------|
+| SPI SCK | GP18 | SPI Clock |
+| SPI MOSI | GP19 | SPI Data Out |
+| SPI MISO | GP16 | SPI Data In |
+| SPI CS | GP17 | Chip Select |
+| BUSY | GP20 | Radio Busy Signal |
+| DIO1 | GP21 | Data Interrupt |
+| RST | GP22 | Reset |
+| RXEN | GP14 | RX Enable (optional) |
+| TXEN | GP15 | TX Enable (optional) |
 
-### Step 3: Go live
+**UART to RC Board:**
+- TX: GP8 (to RC board RX)
+- RX: GP9 (from RC board TX)
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+### RX Module (Receiver)
+Use Raspberry Pi Pico W and wire the SX1280 module the same way as TX.
 
-## Next steps
+**CRSF to Flight Controller:**
+- CRSF TX: GP8 (to FC CRSF RX)
+- CRSF RX: GP9 (from FC CRSF TX)
 
-Now that you have your docs running, explore these key features:
+### RC Board (Controller)
+Wire your RC components to Raspberry Pi Pico:
+- SH1106G OLED display (I2C)
+- ADS1115 16-bit ADC module (I2C)
+- 2× 2-axis analog joysticks to ADC
+- 4× toggle switches
+- 2× navigation buttons
 
-<CardGroup cols={2}>
+**UART to TX Module:**
+- TX: GP8 (to TX module RX)
+- RX: GP9 (from TX module TX)
 
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
+<Warning>
+Ensure all components share a common ground. Double-check wiring before powering on to avoid damaging components.
+</Warning>
 
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
+</Step>
 
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
+<Step title="Install PlatformIO">
 
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
+PlatformIO is required to build and flash the firmware.
 
-</CardGroup>
+### Option 1: VS Code Extension (Recommended)
+
+1. Install [Visual Studio Code](https://code.visualstudio.com/)
+2. Open VS Code Extensions (Ctrl+Shift+X or Cmd+Shift+X)
+3. Search for "PlatformIO IDE"
+4. Click Install
+5. Reload VS Code
+
+### Option 2: PlatformIO Core CLI
+
+```bash
+pip install platformio
+```
+
+Verify installation:
+```bash
+pio --version
+```
+
+</Step>
+
+<Step title="Clone the Repository">
+
+Clone the XLRS source code:
+
+```bash
+git clone <repository-url>
+cd xlrs
+```
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+Replace `<repository-url>` with the actual repository URL.
 </Note>
+
+</Step>
+
+<Step title="Configure Binding Phrase (Optional)">
+
+By default, both TX and RX use the binding phrase `"FPV_BIND_2024"`. For security, you should customize this.
+
+Edit `platformio.ini` and update the binding phrase in both `tx_sx128x` and `rx_sx128x` environments:
+
+```ini
+[env:tx_sx128x]
+build_flags = 
+    ; ... other flags ...
+    -DDEFAULT_BINDING_PHRASE=\"YourCustomPhrase\"
+
+[env:rx_sx128x]
+build_flags =
+    ; ... other flags ...
+    -DDEFAULT_BINDING_PHRASE=\"YourCustomPhrase\"
+```
+
+<Warning>
+Both TX and RX must use the same binding phrase to pair successfully.
+</Warning>
+
+</Step>
+
+<Step title="Build and Flash RX Module">
+
+1. Connect the RX Raspberry Pi Pico W to your computer via USB while holding the BOOTSEL button
+2. Build and upload the firmware:
+
+```bash
+pio run -e rx_sx128x -t upload
+```
+
+3. Open serial monitor to verify initialization:
+
+```bash
+pio device monitor -e rx_sx128x
+```
+
+You should see output indicating the SX1280 radio initialized successfully.
+
+<Note>
+Monitor speed is 115200 baud. The RX will automatically enter pairing mode after 5 seconds if not paired.
+</Note>
+
+</Step>
+
+<Step title="Build and Flash TX Module">
+
+1. Connect the TX Raspberry Pi Pico to your computer via USB while holding the BOOTSEL button
+2. Build and upload the firmware:
+
+```bash
+pio run -e tx_sx128x -t upload
+```
+
+3. Open serial monitor:
+
+```bash
+pio device monitor -e tx_sx128x
+```
+
+The TX will automatically enter pairing mode if not previously paired.
+
+</Step>
+
+<Step title="Build and Flash RC Board">
+
+1. Connect the RC board Raspberry Pi Pico to your computer via USB while holding the BOOTSEL button
+2. Build and upload the firmware:
+
+```bash
+pio run -e rc-crsf -t upload
+```
+
+3. Open serial monitor:
+
+```bash
+pio device monitor -e rc-crsf
+```
+
+The RC board will initialize the display and begin reading inputs.
+
+</Step>
+
+<Step title="Pair TX and RX">
+
+The TX and RX use a binding phrase-based pairing system.
+
+### Automatic Pairing
+
+1. **Power on RX first**: The RX will automatically enter pairing mode after 5 seconds if not paired
+2. **Power on TX**: The TX will automatically enter pairing mode if not paired
+3. **Wait for pairing**: Both devices will exchange binding UIDs and establish a secure connection
+4. **Verify pairing**: Check serial monitors - you should see "CONNECTED" state
+
+### Manual Pairing
+
+If automatic pairing fails:
+
+1. **Put RX in pairing mode**: Hold the BOOTSEL button on the RX Pico for 5 seconds
+   - RX enters pairing mode for 60 seconds
+2. **Restart TX**: Power cycle the TX module
+   - TX will send pairing packets
+3. **Verify**: Both devices should pair and enter CONNECTED state
+
+<Note>
+After successful pairing, devices will automatically reconnect on subsequent power-ups. Pairing keys are stored in EEPROM.
+</Note>
+
+### Verify Pairing
+
+In the serial monitor, you should see:
+- Binding UID displayed (should match on both devices)
+- Connection state: PAIRING → CONNECTING → CONNECTED
+- RSSI and SNR values
+- Channel data transmission
+
+</Step>
+
+<Step title="Connect to Flight Controller">
+
+1. **Wire CRSF connection**:
+   - RX GP8 → Flight Controller CRSF RX
+   - RX GP9 → Flight Controller CRSF TX (for telemetry)
+   - GND → GND
+
+2. **Configure flight controller**:
+   - Set receiver type to CRSF
+   - Set serial port to 420000 baud
+   - Enable telemetry on the same port
+
+3. **Power on system**:
+   - RX module powers on and connects to TX
+   - Flight controller receives CRSF channel data
+   - Battery telemetry flows back to RC board
+
+<Warning>
+Ensure the flight controller UART is configured for 420000 baud CRSF protocol. Incorrect baud rate will prevent communication.
+</Warning>
+
+</Step>
+
+<Step title="Test and Verify">
+
+### Check Connection Status
+
+On the serial monitors, verify:
+- **TX**: Shows "CONNECTED" state, RSSI > -90 dBm, SNR > 5 dB
+- **RX**: Shows "CONNECTED" state, receiving channels, outputting CRSF
+- **RC Board**: Shows channel values updating as you move sticks
+
+### Test Channels
+
+1. Move joysticks on RC board
+2. Verify channel values update in TX serial monitor
+3. Check flight controller configurator shows channel movement
+
+### Test Telemetry
+
+1. Connect a battery to your flight controller
+2. Verify battery voltage displays on RC board OLED
+3. Check TX serial monitor shows battery telemetry
+
+<Note>
+Good RSSI values are typically > -90 dBm. If RSSI is lower, check antenna connections and reduce distance between TX and RX.
+</Note>
+
+</Step>
+
+</Steps>
+
+## Connection Indicators
+
+Monitor the system status through:
+
+- **Serial Monitor (115200 baud)**: Connection state, RSSI, SNR, packet statistics
+- **RC Board Display**: Connection status, signal strength, channel values, battery telemetry
+- **RX Serial Monitor**: Received channels, connection state, CRSF output status
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="TX won't connect to RX">
+    - Ensure RX is powered and in pairing mode (hold BOOTSEL for 5 seconds)
+    - Verify both devices use the same binding phrase (check Serial output for binding UID)
+    - Check radio wiring (SPI, BUSY, DIO1, RST pins)
+    - Monitor Serial output for connection state and error messages
+  </Accordion>
+  
+  <Accordion title="Pairing fails">
+    - Make sure RX is in pairing mode (hold BOOTSEL for 5 seconds, 60 second timeout)
+    - Verify binding phrase matches on both devices
+    - Check radio initialization (should see "SX128x ready" in Serial)
+    - Ensure devices are within range for initial pairing
+  </Accordion>
+  
+  <Accordion title="No CRSF output from RX">
+    - Verify RX is connected (check Serial for "CONNECTED" state)
+    - Check CRSF wiring (GP8 to FC RX, GP9 from FC TX)
+    - Verify CRSF baudrate is 420000 on flight controller
+    - Monitor Serial for "[CRSF OUT]" messages
+  </Accordion>
+  
+  <Accordion title="No channel data from RC board">
+    - Verify UART wiring between RC board and TX module (GP8/GP9, 420000 baud)
+    - Check RC board is powered and sending data
+    - Monitor TX Serial for UART protocol messages
+    - Verify RC board display shows channel values
+  </Accordion>
+  
+  <Accordion title="Radio not initializing">
+    - Check all SPI connections (SCK, MOSI, MISO, CS)
+    - Verify BUSY and DIO1 pins are connected
+    - Check RST pin connection
+    - Ensure proper 3.3V power supply
+    - Check Serial for "SX128x init failed" messages
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Hardware Requirements" icon="microchip" href="/hardware-requirements">
+    Complete list of all required components and specifications
+  </Card>
+  <Card title="Configuration" icon="sliders" href="/configuration">
+    Learn how to customize radio settings and pin configurations
+  </Card>
+</CardGroup>

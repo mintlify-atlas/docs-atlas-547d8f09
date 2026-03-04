@@ -1,0 +1,273 @@
+---
+title: 'PlatformIO Setup'
+description: 'Install PlatformIO, clone the repository, and understand the project structure'
+---
+
+## Prerequisites
+
+Before building XLRS firmware, you'll need:
+
+- **Python 3.6+** (required for PlatformIO)
+- **Git** (to clone the repository)
+- **USB cable** (for flashing RP2040 boards)
+- **Text editor or IDE** (VS Code recommended)
+
+## Installing PlatformIO
+
+PlatformIO is the build system used for XLRS. There are two main installation methods:
+
+### Method 1: PlatformIO IDE (Recommended)
+
+<Steps>
+  <Step title="Install VS Code">
+    Download and install [Visual Studio Code](https://code.visualstudio.com/)
+  </Step>
+  
+  <Step title="Install PlatformIO Extension">
+    1. Open VS Code
+    2. Go to Extensions (Ctrl+Shift+X)
+    3. Search for "PlatformIO IDE"
+    4. Click **Install**
+    5. Restart VS Code when prompted
+  </Step>
+  
+  <Step title="Verify Installation">
+    Open the PlatformIO Home page from the sidebar (alien icon) to confirm successful installation
+  </Step>
+</Steps>
+
+### Method 2: PlatformIO Core (CLI)
+
+For command-line usage without VS Code:
+
+```bash
+# Install PlatformIO Core
+pip install -U platformio
+
+# Verify installation
+pio --version
+```
+
+## Cloning the Repository
+
+Clone the XLRS source code to your local machine:
+
+```bash
+# Clone the repository
+git clone https://github.com/xlrs-dev/xlrs.git
+
+# Navigate to the project directory
+cd xlrs
+```
+
+## Project Structure
+
+The XLRS project follows the standard PlatformIO structure:
+
+```
+xlrs/
+├── platformio.ini          # Build configuration and environments
+├── src/                    # Source code files
+│   ├── tx_main_sx128x.cpp # TX module main (SX1280 radio)
+│   ├── rx_main_sx128x.cpp # RX module main (SX1280 radio)
+│   ├── rc_crsf_main.cpp   # RC board main (inputs & display)
+│   └── ...                # Other source files
+├── include/                # Header files
+├── lib/                    # Project-specific libraries
+└── .pio/                   # PlatformIO build artifacts (generated)
+```
+
+### Key Files
+
+- **platformio.ini**: Defines build environments, dependencies, and configuration flags
+- **src/**: Contains all firmware source code
+- **include/**: Shared header files and definitions
+- **lib/**: Custom libraries used across the project
+
+## Understanding Build Environments
+
+The `platformio.ini` file defines multiple build environments for different hardware targets:
+
+### Primary Environments
+
+| Environment | Target | Description |
+|-------------|--------|-------------|
+| `tx_sx128x` | TX Module | Transmitter with SX1280 radio and UART protocol |
+| `rx_sx128x` | RX Module | Receiver with SX1280 radio and CRSF output |
+| `rc-crsf` | RC Board | Input controller with analog sticks and OLED display |
+
+### Legacy Environments (Deprecated)
+
+| Environment | Target | Description |
+|-------------|--------|-------------|
+| `tx-ble` | TX Module | Legacy Bluetooth LE transmitter (deprecated) |
+| `rx-ble` | RX Module | Legacy Bluetooth LE receiver (deprecated) |
+
+### Debug Environments
+
+| Environment | Target | Description |
+|-------------|--------|-------------|
+| `sx1280_debug` | Debug Tool | SX1280 radio debugging and testing |
+| `rc-rp2350` | RC Board | RC board for RP2350 (Pico 2) with internal ADC |
+
+<Warning>
+  The BLE-based environments (`tx-ble`, `rx-ble`) are deprecated and may be removed in future versions. Use the SX1280-based environments for new projects.
+</Warning>
+
+## Environment Configuration
+
+Each environment in `platformio.ini` specifies:
+
+- **Platform**: RP2040/RP2350 Raspberry Pi Pico platform
+- **Board**: Target board (rpipico, rpipicow, rpipico2)
+- **Framework**: Arduino framework with earlephilhower core
+- **Build flags**: Pin mappings, feature flags, and configuration
+- **Dependencies**: Required libraries (RadioLib, Adafruit, etc.)
+- **Source filter**: Which source files to include in the build
+
+### Example: tx_sx128x Environment
+
+```ini
+[env:tx_sx128x]
+platform = https://github.com/maxgerhardt/platform-raspberrypi.git
+board = rpipico
+lib_ldf_mode=deep+
+monitor_speed = 115200
+framework = arduino
+board_build.core = earlephilhower
+lib_deps = 
+    jgromes/RadioLib@^7.4.0
+build_flags = 
+    -DTX_SIDE=1
+    -DSX128X_SPI_SCK=18
+    -DSX128X_SPI_MOSI=19
+    -DSX128X_SPI_MISO=16
+    -DSX128X_SPI_CS=17
+    -DSX128X_SPI_BUSY=20
+    -DSX128X_SPI_DIO1=21
+    -DSX128X_SPI_RST=22
+    -DSX128X_RXEN=14
+    -DSX128X_TXEN=15
+    -DUART_PROTOCOL_TX=8
+    -DUART_PROTOCOL_RX=9
+    -DDEFAULT_BINDING_PHRASE=\"Kikobot-02\"
+build_src_filter = +<tx_main_sx128x.cpp> -<main.cpp> ...
+```
+
+## Dependencies
+
+PlatformIO automatically downloads and manages dependencies defined in each environment:
+
+### Core Dependencies
+
+- **[RadioLib](https://github.com/jgromes/RadioLib)** (v7.4.0+): SX1280 radio driver for TX and RX modules
+- **[FastLED](https://github.com/FastLED/FastLED)** (v3.6.0+): LED control for RX module status indicators
+
+### RC Board Dependencies
+
+- **[Adafruit SH110X](https://github.com/adafruit/Adafruit_SH110X)** (v2.1.14+): OLED display driver
+- **[Adafruit GFX Library](https://github.com/adafruit/Adafruit-GFX-Library)** (v1.11.9+): Graphics rendering
+- **[Adafruit ADS1X15](https://github.com/adafruit/Adafruit_ADS1X15)** (v2.2.3+): 16-bit ADC for analog inputs
+
+<Note>
+  Dependencies are automatically installed when you build a project for the first time. No manual library installation is required.
+</Note>
+
+## Opening the Project
+
+### In VS Code with PlatformIO IDE
+
+<Steps>
+  <Step title="Open the Project">
+    1. Open VS Code
+    2. Click **File > Open Folder**
+    3. Select the `xlrs` directory
+    4. PlatformIO will automatically detect the project
+  </Step>
+  
+  <Step title="Select Environment">
+    Click on the environment selector in the bottom status bar and choose your target (e.g., `tx_sx128x`)
+  </Step>
+  
+  <Step title="Wait for Dependencies">
+    PlatformIO will automatically download the platform and libraries on first load. This may take a few minutes.
+  </Step>
+</Steps>
+
+### Using PlatformIO Core (CLI)
+
+```bash
+# Navigate to project directory
+cd xlrs
+
+# List available environments
+pio project config
+
+# PlatformIO will auto-detect platformio.ini
+```
+
+## Verifying Setup
+
+Test your setup by building one of the environments:
+
+```bash
+# Build TX module firmware
+pio run -e tx_sx128x
+```
+
+If successful, you'll see output similar to:
+
+```
+Processing tx_sx128x (platform: ...; board: rpipico; framework: arduino)
+...
+Building .pio/build/tx_sx128x/firmware.elf
+Building .pio/build/tx_sx128x/firmware.uf2
+=================================== [SUCCESS] ===================================
+```
+
+## Next Steps
+
+Now that you have PlatformIO set up and the repository cloned:
+
+- Learn how to [build firmware](/build/building-firmware) for different environments
+- Understand [flashing procedures](/build/flashing-devices) for RP2040 boards
+- Explore [build flags](/configuration/build-flags) for customization
+
+## Troubleshooting
+
+### PlatformIO Installation Issues
+
+**Problem**: PlatformIO extension won't install in VS Code
+
+- Ensure you have Python 3.6+ installed
+- Try installing PlatformIO Core manually: `pip install -U platformio`
+- Restart VS Code after installation
+
+**Problem**: `pip: command not found`
+
+- Install Python from [python.org](https://www.python.org/downloads/)
+- Ensure Python is added to your system PATH
+
+### Project Detection Issues
+
+**Problem**: PlatformIO doesn't detect the project
+
+- Ensure you opened the root directory (containing `platformio.ini`)
+- Check that `platformio.ini` exists and is not corrupted
+- Try running `pio project init` to reinitialize
+
+### Platform Download Failures
+
+**Problem**: RP2040 platform fails to download
+
+- Check your internet connection
+- Try manually installing: `pio platform install https://github.com/maxgerhardt/platform-raspberrypi.git`
+- Clear PlatformIO cache: `pio system prune`
+
+### Library Dependency Issues
+
+**Problem**: Libraries fail to download
+
+- Clear library cache: `pio lib --global uninstall RadioLib` then rebuild
+- Check library versions in `platformio.ini` are available
+- Try updating PlatformIO: `pio upgrade`

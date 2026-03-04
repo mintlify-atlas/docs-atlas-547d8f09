@@ -1,0 +1,220 @@
+---
+title: Common Issues
+description: Most frequent problems and solutions for XLRS
+---
+
+This page covers the most frequently encountered issues when setting up and using XLRS.
+
+## Radio Not Initializing
+
+If you see "SX128x init failed" in the serial monitor:
+
+<Accordion title="Check SPI Wiring">
+  Verify all SPI connections are correct:
+  - **SCK**: GP18 (default)
+  - **MOSI**: GP19 (default)
+  - **MISO**: GP16 (default)
+  - **CS**: GP17 (default)
+  - **BUSY**: GP20 (required)
+  - **DIO1**: GP21 (required for interrupts)
+  - **RST**: GP22 (required)
+
+  <Warning>
+    The BUSY and DIO1 pins are critical for proper radio operation. Missing connections will cause initialization to fail.
+  </Warning>
+</Accordion>
+
+<Accordion title="Check Power Supply">
+  - Ensure the SX1280 module receives stable 3.3V power
+  - Check for voltage drops under load
+  - Verify ground connections between Pico and SX1280
+  - Some modules require separate 3.3V regulator
+</Accordion>
+
+<Accordion title="Verify Pin Configuration">
+  If using custom pins, ensure they're defined in `platformio.ini`:
+  ```ini
+  build_flags =
+    -DSX128X_SPI_SCK=18
+    -DSX128X_SPI_MOSI=19
+    -DSX128X_SPI_MISO=16
+    -DSX128X_SPI_CS=17
+    -DSX128X_SPI_BUSY=20
+    -DSX128X_SPI_DIO1=21
+    -DSX128X_SPI_RST=22
+  ```
+</Accordion>
+
+## No CRSF Output from RX
+
+<Accordion title="Verify Connection State">
+  Check the serial monitor (115200 baud) on the RX module:
+  - Look for `[STATE] Current: CONNECTED` messages
+  - Connection must show CONNECTED state to output CRSF
+  - If state is DISCONNECTED or PAIRING, see [Connection Problems](/troubleshooting/connection-problems)
+</Accordion>
+
+<Accordion title="Check CRSF Wiring">
+  Default CRSF pins on RX:
+  - **CRSF TX** (to FC RX): GP8
+  - **CRSF RX** (from FC TX): GP9
+  - **Baudrate**: 420000
+
+  Verify in serial output:
+  ```
+  CRSF on Serial2: TX=GP8, RX=GP9
+  ```
+
+  <Warning>
+    Flight controller CRSF port must be configured for 420000 baud. Check your FC configuration (e.g., Betaflight CLI: `serial` command).
+  </Warning>
+</Accordion>
+
+<Accordion title="Confirm CRSF Frames Are Being Sent">
+  Look for these messages in RX serial output:
+  ```
+  [CRSF OUT] sent RC frame #123 ch0=1500 ch1=1500 txPin=GP8 rxPin=GP9
+  ```
+
+  If you see these messages but FC shows no input:
+  - TX/RX may be swapped (try connecting CRSF TX to FC TX and RX to RX)
+  - FC UART port may not be enabled for CRSF
+  - Check FC serial port configuration
+</Accordion>
+
+## No Channel Data from RC Board
+
+If TX module shows no channel updates:
+
+<Accordion title="Verify UART Connection">
+  Check UART wiring between RC board and TX module:
+  - **Baudrate**: 420000
+  - **TX module RX**: GP9 (connects to RC board TX)
+  - **TX module TX**: GP8 (connects to RC board RX)
+  - Ground must be connected
+
+  TX serial output should show:
+  ```
+  UART Protocol on Serial2: TX=GP8, RX=GP9
+  ```
+</Accordion>
+
+<Accordion title="Check RC Board Power and Operation">
+  - Verify RC board is powered on
+  - Check RC board serial output (if available) for UART transmission logs
+  - Ensure RC board firmware is running correctly
+  - RC board should send channel data at ~50Hz
+</Accordion>
+
+<Accordion title="Monitor UART Protocol Messages">
+  On TX module serial monitor, you should see:
+  - Channel data being received from RC board
+  - No repeated "UART timeout" or "CRC error" messages
+  
+  If UART errors are frequent:
+  - Check for loose connections
+  - Verify both devices use same baudrate (420000)
+  - Ensure ground connection is solid
+</Accordion>
+
+## Binding Phrase Mismatch
+
+If pairing fails repeatedly:
+
+<Accordion title="Verify Binding UID Matches">
+  Check serial output on both TX and RX at startup:
+  ```
+  Binding UID: A1B2C3D4E5F60708 (from phrase: FPV_BIND_2024)
+  ```
+
+  The Binding UID **must be identical** on both devices.
+
+  <Warning>
+    If the binding phrase differs, the UID will not match and pairing will always fail. Both TX and RX must use the same phrase.
+  </Warning>
+</Accordion>
+
+<Accordion title="Set Custom Binding Phrase">
+  To change the binding phrase, add to `platformio.ini` for **both** TX and RX environments:
+  ```ini
+  build_flags =
+    -DDEFAULT_BINDING_PHRASE=\"YourCustomPhrase\"
+  ```
+
+  Rebuild and upload to both devices.
+</Accordion>
+
+## Poor Signal Quality / Connection Drops
+
+<Accordion title="Check RSSI and SNR Values">
+  Monitor serial output for signal quality:
+  ```
+  [STATE] Current: CONNECTED (RSSI: -65, SNR: 9.5)
+  ```
+
+  **Good signal:**
+  - RSSI: > -80 dBm (closer to 0 is better)
+  - SNR: > 5 dB (higher is better)
+
+  **Weak signal:**
+  - RSSI: < -100 dBm
+  - SNR: < 0 dB
+
+  If signal is weak:
+  - Move devices closer together
+  - Check antenna connections
+  - Ensure antennas are properly oriented
+  - Remove obstacles between TX and RX
+</Accordion>
+
+<Accordion title="Check for 2.4GHz Interference">
+  Sources of interference:
+  - WiFi routers and access points
+  - Bluetooth devices
+  - Microwave ovens
+  - Other 2.4GHz RC systems
+
+  Try changing the frequency in `platformio.ini`:
+  ```ini
+  build_flags =
+    -DSX128X_FREQ_MHZ=2450.0
+  ```
+
+  Available range: 2400-2500 MHz
+</Accordion>
+
+<Accordion title="Monitor Sync ACK Misses">
+  The TX uses hysteresis to prevent false disconnects. Check for:
+  ```
+  [STATE] CONNECTED -> LOST (missed sync ACKs)
+  ```
+
+  Frequent connection losses indicate:
+  - Weak signal (check RSSI)
+  - Antenna issues
+  - Radio interference
+  - Hardware problems with SX1280 module
+</Accordion>
+
+## Device ID Mismatch
+
+If you see errors like:
+
+```
+[SYNC] RX ID mismatch in SYNC_ACK
+[RX] Invalid channel frame (device ID mismatch / HMAC / decrypt)
+```
+
+<Accordion title="Clear Pairing and Re-pair">
+  Device IDs may be out of sync if pairing was interrupted or devices were re-flashed.
+
+  **To clear pairing:**
+  1. Re-flash both TX and RX modules (this clears EEPROM)
+  2. On RX: Hold BOOTSEL for 5 seconds to enter pairing mode
+  3. On TX: Power on (should auto-enter pairing if not paired)
+  4. Wait for pairing to complete
+
+  <Warning>
+    Device IDs are stored in EEPROM. Flashing new firmware typically clears EEPROM, but manual EEPROM clearing may be needed if issues persist.
+  </Warning>
+</Accordion>

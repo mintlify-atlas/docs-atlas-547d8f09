@@ -1,0 +1,462 @@
+---
+title: 'Flashing Devices'
+description: 'Upload firmware to RP2040 boards and troubleshoot common flashing issues'
+---
+
+## Overview
+
+Flashing is the process of uploading compiled firmware to your RP2040 boards. XLRS supports both automatic upload via PlatformIO and manual drag-and-drop methods.
+
+## Flashing Methods
+
+There are two primary methods for flashing RP2040 boards:
+
+1. **Automatic Upload**: PlatformIO handles everything (recommended)
+2. **Manual Upload**: Drag-and-drop UF2 files to the bootloader
+
+## Automatic Upload with PlatformIO
+
+### Prerequisites
+
+- USB cable connected between your computer and the RP2040 board
+- Firmware already built (see [Building Firmware](/build/building-firmware))
+
+### Using VS Code with PlatformIO IDE
+
+<Steps>
+  <Step title="Connect the Board">
+    Connect your RP2040 board to your computer via USB
+  </Step>
+  
+  <Step title="Enter Bootloader Mode">
+    - Hold the **BOOTSEL** button on the Pico
+    - While holding BOOTSEL, press and release the **RESET** button (or plug in USB)
+    - Release the **BOOTSEL** button
+    - The Pico will appear as a USB mass storage device named "RPI-RP2"
+  </Step>
+  
+  <Step title="Select Environment">
+    Choose your target environment from the bottom status bar (e.g., `tx_sx128x`)
+  </Step>
+  
+  <Step title="Upload">
+    Click the **Upload** button (right arrow icon) in the bottom status bar, or press `Ctrl+Alt+U`
+  </Step>
+  
+  <Step title="Wait for Completion">
+    PlatformIO will build (if needed) and upload the firmware. The board will automatically reboot when complete.
+  </Step>
+</Steps>
+
+### Using PlatformIO Core (CLI)
+
+```bash
+# Build and upload TX module
+pio run -e tx_sx128x -t upload
+
+# Build and upload RX module
+pio run -e rx_sx128x -t upload
+
+# Build and upload RC board
+pio run -e rc-crsf -t upload
+```
+
+<Note>
+  If the board is not in bootloader mode, PlatformIO will fail to detect it. Make sure to hold BOOTSEL during reset/power-on.
+</Note>
+
+## Manual Upload (Drag-and-Drop)
+
+If automatic upload doesn't work, or you prefer manual control:
+
+<Steps>
+  <Step title="Build the Firmware">
+    ```bash
+    pio run -e tx_sx128x
+    ```
+    This generates `firmware.uf2` in `.pio/build/tx_sx128x/`
+  </Step>
+  
+  <Step title="Enter Bootloader Mode">
+    - Hold the **BOOTSEL** button on the Pico
+    - While holding BOOTSEL, plug in the USB cable (or press RESET)
+    - Release the **BOOTSEL** button
+    - The board appears as a USB drive named "RPI-RP2"
+  </Step>
+  
+  <Step title="Copy UF2 File">
+    Drag and drop (or copy) the `firmware.uf2` file to the "RPI-RP2" drive
+  </Step>
+  
+  <Step title="Automatic Reboot">
+    The board automatically reboots and starts running the new firmware. The RPI-RP2 drive will disappear.
+  </Step>
+</Steps>
+
+### Locating the UF2 File
+
+After building, the UF2 file is located at:
+
+```
+.pio/build/[environment]/firmware.uf2
+```
+
+Examples:
+- TX Module: `.pio/build/tx_sx128x/firmware.uf2`
+- RX Module: `.pio/build/rx_sx128x/firmware.uf2`
+- RC Board: `.pio/build/rc-crsf/firmware.uf2`
+
+## Flashing Multiple Boards
+
+When setting up a complete XLRS system, you need to flash three boards:
+
+<Steps>
+  <Step title="Flash the TX Module">
+    ```bash
+    pio run -e tx_sx128x -t upload
+    ```
+    Disconnect and set aside after flashing
+  </Step>
+  
+  <Step title="Flash the RX Module">
+    ```bash
+    pio run -e rx_sx128x -t upload
+    ```
+    Disconnect and set aside after flashing
+  </Step>
+  
+  <Step title="Flash the RC Board">
+    ```bash
+    pio run -e rc-crsf -t upload
+    ```
+    Disconnect and set aside after flashing
+  </Step>
+  
+  <Step title="Verify All Boards">
+    Power each board individually and check serial output at 115200 baud to verify successful boot
+  </Step>
+</Steps>
+
+<Warning>
+  Make sure to flash the correct firmware to each board! Flashing RX firmware to a TX board (or vice versa) will not work correctly.
+</Warning>
+
+## Verifying the Upload
+
+### Serial Monitor
+
+After flashing, verify the firmware is running correctly:
+
+#### Using VS Code with PlatformIO
+
+1. Click the **Serial Monitor** button (plug icon) in the bottom status bar
+2. Set baud rate to **115200**
+3. Reset the board (press RESET button)
+4. You should see boot messages and initialization output
+
+#### Using PlatformIO Core (CLI)
+
+```bash
+# Open serial monitor
+pio device monitor -e tx_sx128x -b 115200
+
+# Exit with Ctrl+C
+```
+
+#### Using screen (Linux/macOS)
+
+```bash
+# Find the device
+ls /dev/tty*
+
+# Connect (replace ttyACM0 with your device)
+screen /dev/ttyACM0 115200
+
+# Exit with Ctrl+A then K
+```
+
+#### Using PuTTY (Windows)
+
+1. Open PuTTY
+2. Select "Serial" connection type
+3. Enter the COM port (e.g., COM3)
+4. Set speed to 115200
+5. Click **Open**
+
+### Expected Output
+
+**TX Module (tx_sx128x):**
+```
+XLRS TX Module - SX1280
+Binding UID: [8-byte hex]
+SX128x init: OK
+SX128x ready
+UART Protocol initialized
+State: DISCONNECTED
+```
+
+**RX Module (rx_sx128x):**
+```
+XLRS RX Module - SX1280
+Binding UID: [8-byte hex]
+SX128x init: OK
+SX128x ready
+CRSF initialized (GP8 TX, GP9 RX)
+Auto-pairing timeout: 5 seconds
+State: PAIRING
+```
+
+**RC Board (rc-crsf):**
+```
+XLRS RC Board
+Display: OK
+ADS1115 ADC: OK
+UART Protocol initialized
+Ready
+```
+
+## Entering Bootloader Mode
+
+### Standard Method (BOOTSEL Button)
+
+All RP2040 boards have a BOOTSEL button:
+
+<Steps>
+  <Step title="Locate the BOOTSEL Button">
+    On Raspberry Pi Pico boards, it's a small button on the top surface, usually labeled "BOOTSEL"
+  </Step>
+  
+  <Step title="Hold BOOTSEL">
+    Press and hold the BOOTSEL button
+  </Step>
+  
+  <Step title="Apply Power">
+    While holding BOOTSEL:
+    - Plug in the USB cable, OR
+    - Press and release the RESET button
+  </Step>
+  
+  <Step title="Release BOOTSEL">
+    Release the BOOTSEL button after the board is powered/reset
+  </Step>
+  
+  <Step title="Verify Bootloader Mode">
+    The board appears as a USB mass storage device named "RPI-RP2"
+  </Step>
+</Steps>
+
+### Alternative Method (No RESET Button)
+
+If your board doesn't have an external RESET button:
+
+1. **Disconnect** the USB cable
+2. **Hold** the BOOTSEL button
+3. **Plug in** the USB cable while still holding BOOTSEL
+4. **Release** BOOTSEL after 1-2 seconds
+5. The board should appear as "RPI-RP2"
+
+### Troubleshooting Bootloader Mode
+
+**Problem**: Board doesn't appear as "RPI-RP2"
+
+- Ensure you're holding BOOTSEL before applying power/reset
+- Try a different USB cable (some cables are charge-only)
+- Try a different USB port on your computer
+- Check that the board is receiving power (LED indicators)
+
+**Problem**: RPI-RP2 drive appears then immediately disappears
+
+- You may have released BOOTSEL too early
+- Try holding BOOTSEL for a full second after applying power
+
+**Problem**: Wrong drive appears (not named "RPI-RP2")
+
+- This is not the RP2040 bootloader
+- Disconnect and try the bootloader process again
+
+## Flash Size and Firmware Size
+
+RP2040 boards have 2 MB of flash memory:
+
+- **Available**: ~2 MB (~2,097,152 bytes)
+- **TX Module**: Typically 200-300 KB
+- **RX Module**: Typically 200-300 KB  
+- **RC Board**: Typically 300-400 KB (larger due to display libraries)
+
+You can check firmware size after building:
+
+```bash
+pio run -e tx_sx128x
+```
+
+Look for output like:
+```
+RAM:   [===       ]  28.4% (used 75112 bytes from 264192 bytes)
+Flash: [===       ]  31.2% (used 650408 bytes from 2093056 bytes)
+```
+
+<Warning>
+  If firmware size exceeds available flash, the build will fail. This is rare but can happen with extensive custom modifications.
+</Warning>
+
+## Re-flashing Firmware
+
+You can re-flash firmware anytime to:
+- Update to a new version
+- Change configuration flags
+- Recover from a bad flash
+
+The process is identical to the initial flash - just rebuild and upload.
+
+```bash
+# Rebuild with new flags and re-flash
+pio run -e tx_sx128x -t upload
+```
+
+<Note>
+  Re-flashing does not erase EEPROM by default. Pairing keys and device IDs are preserved across firmware updates.
+</Note>
+
+## Troubleshooting Upload Issues
+
+### "No device found" Error
+
+**Problem**: PlatformIO can't find the board
+
+```bash
+Error: No device found on /dev/ttyACM0
+```
+
+**Solutions**:
+- Enter bootloader mode (hold BOOTSEL during reset)
+- Try manual drag-and-drop upload instead
+- Check USB cable and port
+- Verify board is powered (check LED)
+
+### Permission Denied (Linux)
+
+**Problem**: Upload fails with permission error
+
+```bash
+Permission denied: '/dev/ttyACM0'
+```
+
+**Solution**: Add your user to the dialout group:
+
+```bash
+sudo usermod -a -G dialout $USER
+# Log out and back in for changes to take effect
+```
+
+### Upload Fails Midway
+
+**Problem**: Upload starts but fails during transfer
+
+**Solutions**:
+- Try a different USB cable
+- Use a different USB port (avoid USB hubs)
+- Try manual drag-and-drop method
+- Check for low power or brownout conditions
+
+### "Access Denied" (Windows)
+
+**Problem**: Windows blocks access to the device
+
+**Solutions**:
+- Close any serial monitor or terminal programs
+- Disable antivirus temporarily
+- Run VS Code/terminal as Administrator
+- Try manual drag-and-drop to RPI-RP2 drive
+
+### Wrong Firmware Uploaded
+
+**Problem**: Accidentally flashed TX firmware to RX board (or vice versa)
+
+**Solution**: Simply re-flash with the correct firmware. There's no permanent damage.
+
+```bash
+# Flash the correct firmware
+pio run -e rx_sx128x -t upload
+```
+
+### Board Not Responding After Flash
+
+**Problem**: Board doesn't boot or respond after flashing
+
+**Solutions**:
+1. Press the RESET button to reboot
+2. Check serial monitor output for error messages
+3. Verify you flashed the correct environment for your hardware
+4. Re-flash the firmware
+5. Try flashing a simple test firmware (e.g., blink LED)
+
+### UF2 File Rejected
+
+**Problem**: Copying UF2 file to RPI-RP2 results in error
+
+**Solutions**:
+- Ensure you're copying the `.uf2` file (not `.bin` or `.elf`)
+- Verify the UF2 file is not corrupted (rebuild if needed)
+- Try copying from a different location (not over network drive)
+- Ensure sufficient space on the RP2040 (should be 2 MB)
+
+## Advanced Flashing Options
+
+### Using picotool (Advanced)
+
+[picotool](https://github.com/raspberrypi/picotool) is an official RP2040 utility:
+
+```bash
+# Install picotool
+sudo apt install picotool  # Linux
+brew install picotool      # macOS
+
+# Load firmware
+picotool load firmware.uf2
+picotool reboot
+```
+
+### Flash via SWD (Advanced)
+
+For debugging or recovery, you can flash via SWD using a debugger:
+
+- Requires SWD debugger (e.g., Raspberry Pi Debug Probe)
+- Useful for low-level debugging
+- Not needed for normal operation
+
+See PlatformIO documentation for SWD configuration.
+
+## Erasing Flash Memory
+
+To completely erase the RP2040 flash (including EEPROM):
+
+<Steps>
+  <Step title="Download Flash Nuke">
+    Download `flash_nuke.uf2` from [Raspberry Pi Pico SDK](https://github.com/raspberrypi/pico-examples/blob/master/flash/nuke/flash_nuke.uf2)
+  </Step>
+  
+  <Step title="Enter Bootloader Mode">
+    Hold BOOTSEL and connect/reset the board
+  </Step>
+  
+  <Step title="Flash Nuke">
+    Copy `flash_nuke.uf2` to the RPI-RP2 drive
+  </Step>
+  
+  <Step title="Re-flash Firmware">
+    After flash is erased, re-flash your XLRS firmware
+  </Step>
+</Steps>
+
+<Warning>
+  Flash nuke erases everything, including stored pairing keys. You'll need to pair TX and RX again after this operation.
+</Warning>
+
+## Next Steps
+
+After successfully flashing your devices:
+
+- Learn about [pairing TX and RX modules](/configuration/pairing)
+- Understand [radio configuration options](/configuration/radio-settings)
+- Set up [serial monitoring for debugging](/troubleshooting/debugging)
+- Review [common connection issues](/troubleshooting/connection-problems)

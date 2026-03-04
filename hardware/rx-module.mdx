@@ -1,0 +1,130 @@
+---
+title: RX Module Hardware
+description: Hardware requirements and wiring for the XLRS RX module
+---
+
+The RX (receiver) module receives wireless signals from the TX module via SX1280 radio and outputs CRSF protocol to the flight controller.
+
+## Hardware Components
+
+- **Microcontroller**: Raspberry Pi Pico W (RP2040 with WiFi)
+- **Radio Module**: SX1280 2.4GHz radio with SPI interface
+- **Power**: 3.3V supply (typically from flight controller's 3.3V/5V output)
+
+<Note>
+  The Pico W is recommended for the RX module for future WiFi-based features (e.g., configuration, telemetry logging). The standard Pico can also be used if WiFi is not needed.
+</Note>
+
+## SX1280 Radio Wiring
+
+The RX module uses the same SX1280 radio wiring as the TX module.
+
+### SPI Interface Pins
+
+| Signal | RP2040 Pin | Description |
+|--------|------------|-------------|
+| SPI SCK | GP18 | SPI Clock |
+| SPI MOSI | GP19 | SPI Data Out (Pico → SX1280) |
+| SPI MISO | GP16 | SPI Data In (SX1280 → Pico) |
+| SPI CS | GP17 | Chip Select (active low) |
+
+### Radio Control Pins
+
+| Signal | RP2040 Pin | Description |
+|--------|------------|-------------|
+| BUSY | GP20 | Radio Busy Signal (input) |
+| DIO1 | GP21 | Data Interrupt (input, interrupt-driven RX) |
+| RST | GP22 | Reset (output, active low) |
+
+### Optional TX/RX Enable Pins
+
+| Signal | RP2040 Pin | Description |
+|--------|------------|-------------|
+| RXEN | GP14 | RX Enable (optional, for modules with PA/LNA) |
+| TXEN | GP15 | TX Enable (optional, for modules with PA/LNA) |
+
+<Warning>
+  Ensure the SX1280 module is powered with 3.3V. Do not connect 5V to the radio module as this will damage it.
+</Warning>
+
+## CRSF Output to Flight Controller
+
+The RX module outputs CRSF protocol at 420000 baud, compatible with Betaflight, ELRS, and other CRSF-compatible flight controllers.
+
+| Signal | RP2040 Pin | Direction | Description |
+|--------|------------|-----------|-------------|
+| CRSF TX | GP8 | Output | To flight controller CRSF RX |
+| CRSF RX | GP9 | Input | From flight controller CRSF TX (telemetry) |
+| Baudrate | 420000 | - | CRSF protocol speed |
+
+### CRSF Wiring to Flight Controller
+
+<Warning>
+  **Critical wiring**: Connect the RX module's CRSF TX (GP8) to the flight controller's CRSF RX pin, and the RX module's CRSF RX (GP9) to the flight controller's CRSF TX pin.
+</Warning>
+
+**Typical flight controller connection:**
+
+| RX Module | Flight Controller |
+|-----------|-------------------|
+| GP8 (CRSF TX) | UART RX (CRSF) |
+| GP9 (CRSF RX) | UART TX (CRSF) |
+| GND | GND |
+| VBUS (5V) or 3V3 | 5V or 3.3V |
+
+<Note>
+  The RX module can be powered from the flight controller's 5V output (regulated to 3.3V by the Pico's onboard regulator) or directly from the 3.3V output if available.
+</Note>
+
+## CRSF Protocol Details
+
+- **Channels**: 16 channels (8 active from radio + 8 centered at 1500µs)
+- **Update Rate**: 50Hz (20ms frame interval)
+- **Telemetry**: Bidirectional - receives battery telemetry from FC
+- **Compatibility**: Betaflight, ELRS, iNav, and other CRSF receivers
+
+### Telemetry Support
+
+The RX module receives battery telemetry from the flight controller via CRSF:
+
+- **CRSF Frame Type**: 0x08 (Battery Sensor)
+- **Data**: Voltage, current, battery percentage
+- **Update Rate**: 5Hz (200ms intervals)
+- **Forwarding**: Telemetry is sent back to TX module via radio
+
+## Pin Configuration Override
+
+All pin assignments can be overridden in `platformio.ini` using build flags:
+
+```ini
+build_flags =
+    -DSX128X_SPI_SCK=18
+    -DSX128X_SPI_MOSI=19
+    -DSX128X_SPI_MISO=16
+    -DSX128X_SPI_CS=17
+    -DSX128X_SPI_BUSY=20
+    -DSX128X_SPI_DIO1=21
+    -DSX128X_SPI_RST=22
+    -DSX128X_RXEN=14
+    -DSX128X_TXEN=15
+```
+
+## Power Requirements
+
+- **Operating Voltage**: 3.3V (or 5V via USB/VBUS)
+- **Current Draw**: ~100-150mA typical (RP2040 + SX1280)
+- **Power Source**: Flight controller 5V or 3.3V output
+
+## Pairing Mode
+
+The RX module supports automatic pairing mode:
+
+- **Manual pairing**: Hold BOOTSEL button for 5 seconds
+- **Auto-pairing**: Automatically enters pairing mode after 5 seconds if not paired (configurable)
+- **Pairing timeout**: 60 seconds in pairing mode
+
+## Next Steps
+
+- [TX Module Hardware](/hardware/tx-module) - Transmitter module wiring
+- [RC Board Hardware](/hardware/rc-board) - Controller input hardware
+- [Complete Wiring Guide](/hardware/wiring) - Full system wiring diagrams

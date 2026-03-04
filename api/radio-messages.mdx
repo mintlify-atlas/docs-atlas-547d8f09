@@ -1,0 +1,256 @@
+---
+title: 'Radio Message Types'
+description: 'SX1280 radio protocol message types and frame format'
+icon: 'radio'
+---
+
+## Overview
+
+The SX1280 radio protocol uses FLRC (Fast Long Range Communication) modulation at 2.4GHz to transmit control data and telemetry between the TX and RX modules. All messages use a fixed 33-byte packet format with AES-128 encryption and HMAC authentication for secure communication.
+
+## Radio Configuration
+
+| Parameter | Default Value | Description |
+|-----------|---------------|-------------|
+| Frequency | 2420 MHz | Configurable via `SX128X_FREQ_MHZ` |
+| Modulation | FLRC | Fast Long Range Communication |
+| Bitrate | 1300 kbps | Configurable via `SX128X_FLRC_BR_KBPS` |
+| Coding Rate | 1/2 | Configurable via `SX128X_FLRC_CR` |
+| Output Power | 10 dBm | Configurable via `SX128X_OUTPUT_POWER_DBM` |
+| Packet Length | 33 bytes | Fixed length packets |
+| Bandwidth | 812.5 kHz | Configurable via `SX128X_BW_KHZ` |
+
+## Message Types
+
+<ResponseField name="MSG_CHANNELS" type="0x01" required>
+  8-channel control data transmitted from TX to RX. This is the primary message type for sending stick positions and switch states.
+  
+  **Direction:** TX → RX  
+  **Update Rate:** ~50Hz (20ms intervals)  
+  **Encryption:** AES-128 with HMAC-SHA256 authentication
+  
+  ### Payload Structure (31 bytes)
+  
+  <ResponseField name="messageType" type="uint8_t">
+    Message type identifier (0x01)
+  </ResponseField>
+  
+  <ResponseField name="deviceId" type="uint8_t[8]">
+    Unique 8-byte device identifier for sender validation
+  </ResponseField>
+  
+  <ResponseField name="channels" type="uint16_t[8]">
+    16 bytes containing 8 channels (big-endian format)
+    - Range: 1000-2000 µs
+    - Ch0-3: Aileron, Elevator, Rudder, Throttle
+    - Ch4-7: Aux switches
+  </ResponseField>
+  
+  <ResponseField name="sequenceNumber" type="uint16_t">
+    2-byte sequence number for replay attack protection
+  </ResponseField>
+  
+  <ResponseField name="hmac" type="uint8_t[4]">
+    HMAC-SHA256 truncated to 4 bytes for message authentication
+  </ResponseField>
+</ResponseField>
+
+<ResponseField name="MSG_BATTERY" type="0x02">
+  Battery telemetry data transmitted from RX to TX. Contains voltage, current, and remaining capacity information received from the flight controller.
+  
+  **Direction:** RX → TX  
+  **Update Rate:** 5Hz (200ms intervals)  
+  **Source:** CRSF `FRAMETYPE_BATTERY_SENSOR` from flight controller
+  
+  ### Payload Structure
+  
+  <ResponseField name="messageType" type="uint8_t">
+    Message type identifier (0x02)
+  </ResponseField>
+  
+  <ResponseField name="voltage" type="uint16_t">
+    Battery voltage in 0.1V units (big-endian)
+    - Example: 166 = 16.6V
+  </ResponseField>
+  
+  <ResponseField name="current" type="uint16_t">
+    Battery current in 0.1A units (big-endian)
+    - Example: 125 = 12.5A
+  </ResponseField>
+  
+  <ResponseField name="remaining" type="uint8_t">
+    Battery remaining percentage (0-100%)
+  </ResponseField>
+</ResponseField>
+
+<ResponseField name="MSG_PAIRING" type="0x03">
+  Pairing request packet sent by TX to initiate pairing with RX. Contains the binding UID derived from the binding phrase.
+  
+  **Direction:** TX → RX  
+  **Usage:** Sent during pairing mode  
+  **Security:** Contains hashed binding phrase
+  
+  ### Payload Structure
+  
+  <ResponseField name="messageType" type="uint8_t">
+    Message type identifier (0x03)
+  </ResponseField>
+  
+  <ResponseField name="bindingUid" type="uint8_t[16]">
+    16-byte binding UID generated from the binding phrase hash
+  </ResponseField>
+  
+  <ResponseField name="txDeviceId" type="uint8_t[8]">
+    8-byte unique device ID of the transmitter
+  </ResponseField>
+</ResponseField>
+
+<ResponseField name="MSG_PAIRING_ACK" type="0x04">
+  Pairing acknowledgment sent by RX in response to a valid pairing request. Confirms successful pairing and provides RX device ID.
+  
+  **Direction:** RX → TX  
+  **Usage:** Response to MSG_PAIRING  
+  **Result:** Establishes shared encryption key
+  
+  ### Payload Structure
+  
+  <ResponseField name="messageType" type="uint8_t">
+    Message type identifier (0x04)
+  </ResponseField>
+  
+  <ResponseField name="rxDeviceId" type="uint8_t[8]">
+    8-byte unique device ID of the receiver
+  </ResponseField>
+  
+  <ResponseField name="status" type="uint8_t">
+    Pairing status (0x00 = success, other = error)
+  </ResponseField>
+</ResponseField>
+
+<ResponseField name="MSG_SYNC" type="0x05">
+  Connection synchronization packet sent periodically to maintain connection state and verify link quality.
+  
+  **Direction:** TX → RX  
+  **Usage:** Periodic during connected state  
+  **Purpose:** Connection maintenance and link quality monitoring
+  
+  ### Payload Structure
+  
+  <ResponseField name="messageType" type="uint8_t">
+    Message type identifier (0x05)
+  </ResponseField>
+  
+  <ResponseField name="deviceId" type="uint8_t[8]">
+    Transmitter device ID for validation
+  </ResponseField>
+  
+  <ResponseField name="timestamp" type="uint32_t">
+    Timestamp for latency measurement
+  </ResponseField>
+</ResponseField>
+
+<ResponseField name="MSG_SYNC_ACK" type="0x06">
+  Synchronization acknowledgment sent by RX in response to MSG_SYNC. Confirms active connection.
+  
+  **Direction:** RX → TX  
+  **Usage:** Response to MSG_SYNC  
+  **Purpose:** Connection state confirmation
+  
+  ### Payload Structure
+  
+  <ResponseField name="messageType" type="uint8_t">
+    Message type identifier (0x06)
+  </ResponseField>
+  
+  <ResponseField name="deviceId" type="uint8_t[8]">
+    Receiver device ID for validation
+  </ResponseField>
+  
+  <ResponseField name="rssi" type="int16_t">
+    Received signal strength indicator in dBm
+  </ResponseField>
+  
+  <ResponseField name="snr" type="int16_t">
+    Signal-to-noise ratio in dB × 10
+  </ResponseField>
+</ResponseField>
+
+## Frame Format
+
+All radio messages use a fixed 33-byte packet structure:
+
+```
+┌─────────────┬──────────────────────────┬──────────────┐
+│   Payload   │       Radio Overhead     │    Total     │
+│  (31 bytes) │        (2 bytes)         │  (33 bytes)  │
+└─────────────┴──────────────────────────┴──────────────┘
+```
+
+### MSG_CHANNELS Frame Example
+
+```
+Byte 0:      Message Type (0x01)
+Bytes 1-8:   Device ID (8 bytes)
+Bytes 9-24:  Channel Data (16 bytes, 8 channels × 2 bytes BE)
+             Ch0: 0x05DC (1500µs) - Aileron centered
+             Ch1: 0x05DC (1500µs) - Elevator centered
+             Ch2: 0x05DC (1500µs) - Rudder centered
+             Ch3: 0x03E8 (1000µs) - Throttle minimum
+             Ch4: 0x07D0 (2000µs) - Aux1 high
+             Ch5: 0x03E8 (1000µs) - Aux2 low
+             Ch6: 0x05DC (1500µs) - Aux3 centered
+             Ch7: 0x05DC (1500µs) - Aux4 centered
+Bytes 25-26: Sequence Number (2 bytes)
+Bytes 27-30: HMAC (4 bytes)
+Bytes 31-32: Radio overhead (CRC/header)
+```
+
+## Security Features
+
+<CardGroup cols={2}>
+  <Card title="AES-128 Encryption" icon="lock">
+    All channel data is encrypted using a shared key derived during pairing
+  </Card>
+  
+  <Card title="HMAC Authentication" icon="shield-check">
+    Messages are authenticated using HMAC-SHA256 (truncated to 4 bytes)
+  </Card>
+  
+  <Card title="Replay Protection" icon="rotate-reverse">
+    Sequence numbers prevent replay attacks by rejecting duplicate packets
+  </Card>
+  
+  <Card title="Device ID Validation" icon="fingerprint">
+    8-byte device IDs ensure messages are from paired devices only
+  </Card>
+</CardGroup>
+
+## Connection States
+
+The radio protocol implements a state machine for connection management:
+
+| State | Description | Messages Sent |
+|-------|-------------|---------------|
+| DISCONNECTED | No pairing established | None |
+| PAIRING | Attempting to pair with RX | MSG_PAIRING |
+| CONNECTING | Paired, establishing sync | MSG_SYNC |
+| CONNECTED | Active link, data flowing | MSG_CHANNELS, MSG_SYNC |
+| LOST | Connection timeout detected | MSG_SYNC (reconnect attempt) |
+
+## Update Rates
+
+- **Channel Data:** ~50Hz (20ms intervals, limited by half-duplex timing)
+- **Sync Packets:** Periodic to maintain connection
+- **Battery Telemetry:** 5Hz (200ms intervals)
+- **Pairing Messages:** Continuous during pairing mode (60s timeout)
+
+## Connection Loss Detection
+
+Connection loss is detected through missed SYNC_ACK responses:
+- **Hysteresis:** 3 consecutive missed sync ACKs required
+- **Purpose:** Prevents false disconnects from timing collisions
+- **Recovery:** Automatic reconnection via SYNC handshake
+
+<Note>
+  The SX1280 radio operates in half-duplex mode, meaning it cannot transmit and receive simultaneously. The implementation includes timing logic to alternate between TX and RX operations for bidirectional communication.
+</Note>

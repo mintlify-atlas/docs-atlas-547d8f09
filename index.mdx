@@ -1,97 +1,231 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: XLRS Documentation
+description: Professional-grade 2.4GHz remote control system for FPV drones
+mode: custom
 ---
 
-## Setting up
+<div className="relative overflow-hidden bg-gradient-to-br from-[#FF6B35] to-[#C41E3A] dark:from-[#C41E3A] dark:to-[#8B1521] py-20">
+  <div className="max-w-6xl mx-auto px-6">
+    <div className="grid lg:grid-cols-12 gap-12 items-center">
+      <div className="lg:col-span-7">
+        <h1 className="text-5xl md:text-6xl font-bold text-white mb-6">
+          XLRS
+        </h1>
+        <p className="text-xl md:text-2xl text-white/90 mb-8 max-w-2xl">
+          A 2.4GHz radio control system for FPV drones using SX1280 modules and RP2040 boards. Low latency, encrypted, and fully open source.
+        </p>
+        <div className="flex flex-wrap gap-4">
+          <a
+            href="/quickstart"
+            className="inline-flex items-center px-6 py-3 bg-white text-[#C41E3A] font-semibold rounded-lg hover:bg-gray-100 transition-colors no-underline"
+          >
+            Get Started
+            <svg className="ml-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </a>
+          <a
+            href="/hardware-requirements"
+            className="inline-flex items-center px-6 py-3 border-2 border-white/30 bg-white/10 text-white font-semibold rounded-lg hover:bg-white/20 transition-colors no-underline"
+          >
+            Hardware Guide
+          </a>
+        </div>
+      </div>
+      <div className="lg:col-span-5 hidden lg:flex items-center justify-center">
+        <div className="relative">
+          <div className="w-64 h-64 bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20 flex items-center justify-center">
+            <svg className="w-32 h-32 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
-Get your documentation site up and running in minutes.
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Quick start</h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Get your XLRS system up and running in minutes
+  </p>
+  
+  <Steps>
+    <Step title="Gather hardware">
+      You'll need three Raspberry Pi Pico boards (one Pico W for RX), three SX1280 radio modules, and supporting components like joysticks and an OLED display for the RC board.
+      
+      See the [hardware requirements](/hardware-requirements) for the complete list.
+    </Step>
+    
+    <Step title="Install PlatformIO">
+      XLRS uses PlatformIO for building and flashing firmware.
+      
+      ```bash
+      # Install PlatformIO Core
+      pip install platformio
+      ```
+      
+      Clone the repository:
+      
+      ```bash
+      git clone https://github.com/xlrs-dev/xlrs.git
+      cd xlrs
+      ```
+    </Step>
+    
+    <Step title="Build and flash firmware">
+      Build and upload firmware to each module:
+      
+      ```bash
+      # Flash the RX module (receiver on drone)
+      pio run -e rx_sx128x -t upload
+      
+      # Flash the TX module (transmitter)
+      pio run -e tx_sx128x -t upload
+      
+      # Flash the RC board (controller)
+      pio run -e rc-crsf -t upload
+      ```
+    </Step>
+    
+    <Step title="Pair TX and RX">
+      Hold the BOOTSEL button on the RX module for 5 seconds to enter pairing mode. Power on the TX module — it will automatically pair with the RX using the default binding phrase.
+      
+      Once paired, the system establishes a secure encrypted connection. See [pairing configuration](/configuration/pairing) for details.
+    </Step>
+  </Steps>
+</div>
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Explore by topic</h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Learn about the architecture, configure your system, and integrate with flight controllers
+  </p>
+  
+  <CardGroup cols={3}>
+    <Card title="System architecture" icon="diagram-project" href="/architecture/overview">
+      Understand how the RC board, TX module, and RX module work together
+    </Card>
+    <Card title="Build firmware" icon="hammer" href="/build/building-firmware">
+      Compile firmware for TX, RX, and RC board modules
+    </Card>
+    <Card title="Radio settings" icon="tower-broadcast" href="/configuration/radio-settings">
+      Configure frequency, power, bitrate, and FLRC parameters
+    </Card>
+    <Card title="UART protocol" icon="plug" href="/configuration/uart-protocol">
+      High-speed communication between RC board and TX module
+    </Card>
+    <Card title="Pairing & security" icon="lock" href="/configuration/pairing">
+      AES-128 encryption, binding phrases, and secure pairing
+    </Card>
+    <Card title="Troubleshooting" icon="wrench" href="/troubleshooting/common-issues">
+      Resolve connection issues, pairing failures, and radio problems
+    </Card>
+  </CardGroup>
+</div>
 
-## Make it yours
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Key features</h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Built for performance, security, and compatibility
+  </p>
+  
+  <div className="grid md:grid-cols-2 gap-6">
+    <div className="p-6 rounded-xl border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27]">
+      <div className="flex items-start gap-4">
+        <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-[#FF6B35]/10 dark:bg-[#FF6B35]/20 flex items-center justify-center">
+          <svg className="w-5 h-5 text-[#FF6B35]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        </div>
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Low latency radio</h3>
+          <p className="text-sm text-gray-600 dark:text-gray-400">SX1280 with FLRC modulation delivers ~50Hz update rate at 1300kbps for responsive control</p>
+        </div>
+      </div>
+    </div>
+    
+    <div className="p-6 rounded-xl border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27]">
+      <div className="flex items-start gap-4">
+        <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-[#FF6B35]/10 dark:bg-[#FF6B35]/20 flex items-center justify-center">
+          <svg className="w-5 h-5 text-[#FF6B35]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+        </div>
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Secure pairing</h3>
+          <p className="text-sm text-gray-600 dark:text-gray-400">AES-128 encryption and HMAC-SHA256 authentication protect against unauthorized access</p>
+        </div>
+      </div>
+    </div>
+    
+    <div className="p-6 rounded-xl border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27]">
+      <div className="flex items-start gap-4">
+        <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-[#FF6B35]/10 dark:bg-[#FF6B35]/20 flex items-center justify-center">
+          <svg className="w-5 h-5 text-[#FF6B35]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">CRSF compatible</h3>
+          <p className="text-sm text-gray-600 dark:text-gray-400">Standard CRSF output at 420kbps works with Betaflight, ELRS, and other flight controllers</p>
+        </div>
+      </div>
+    </div>
+    
+    <div className="p-6 rounded-xl border border-gray-200 dark:border-[#27272a] bg-white dark:bg-[#1a1d27]">
+      <div className="flex items-start gap-4">
+        <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-[#FF6B35]/10 dark:bg-[#FF6B35]/20 flex items-center justify-center">
+          <svg className="w-5 h-5 text-[#FF6B35]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        </div>
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Bidirectional telemetry</h3>
+          <p className="text-sm text-gray-600 dark:text-gray-400">Battery voltage, current, RSSI, and SNR transmitted back to the RC board display</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
-Design a docs site that looks great and empowers your users.
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">API reference</h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Explore the C++ libraries and protocol specifications
+  </p>
+  
+  <CardGroup cols={2}>
+    <Card title="SX128xLink" icon="code" href="/api/sx128x-link">
+      RadioLib wrapper for SX1280 radio module communication
+    </Card>
+    <Card title="CRSF" icon="paper-plane" href="/api/crsf">
+      CRSF protocol output for flight controller integration
+    </Card>
+    <Card title="UARTProtocol" icon="exchange" href="/api/uart-protocol">
+      High-speed UART messaging between RC board and TX module
+    </Card>
+    <Card title="Security" icon="shield" href="/api/security">
+      AES-128 encryption and HMAC authentication
+    </Card>
+  </CardGroup>
+</div>
 
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
-  </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
-  </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
-
-## Create beautiful pages
-
-Everything you need to create world-class documentation.
-
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
-
-## Need inspiration?
-
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="p-8 rounded-2xl bg-gradient-to-br from-[#FF6B35] to-[#C41E3A] dark:from-[#C41E3A] dark:to-[#8B1521]">
+    <h2 className="text-3xl font-bold text-white mb-4">Ready to build your RC system?</h2>
+    <p className="text-lg text-white/90 mb-6 max-w-2xl">
+      Follow the quickstart guide to flash firmware, pair your modules, and start flying in minutes.
+    </p>
+    <a
+      href="/quickstart"
+      className="inline-flex items-center px-6 py-3 bg-white text-[#C41E3A] font-semibold rounded-lg hover:bg-gray-100 transition-colors no-underline"
+    >
+      Get Started
+      <svg className="ml-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+      </svg>
+    </a>
+  </div>
+</div>

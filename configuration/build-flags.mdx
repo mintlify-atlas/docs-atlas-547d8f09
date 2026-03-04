@@ -1,0 +1,500 @@
+---
+title: Build Flags Reference
+description: Complete reference of all configurable build flags for XLRS
+---
+
+XLRS can be extensively configured via build flags in `platformio.ini`. This page documents all available build flags with their default values and usage examples.
+
+## Side Selection
+
+These flags determine which side of the system (TX or RX) to build.
+
+<ParamField path="TX_SIDE" type="bool" default="undefined">
+  Define this to build TX module firmware.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DTX_SIDE=1
+  ```
+  
+  Required for `tx_sx128x` environment.
+</ParamField>
+
+<ParamField path="RX_SIDE" type="bool" default="undefined">
+  Define this to build RX module firmware.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DRX_SIDE=1
+  ```
+  
+  Required for `rx_sx128x` environment.
+</ParamField>
+
+<ParamField path="RC_CRSF_SIDE" type="bool" default="undefined">
+  Define this to build RC board firmware.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DRC_CRSF_SIDE=1
+  ```
+  
+  Required for `rc-crsf` environment.
+</ParamField>
+
+## SX1280 Radio Configuration
+
+### SPI Pin Configuration
+
+<ParamField path="SX128X_SPI_SCK" type="int" default="18">
+  SPI clock pin.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_SPI_SCK=18
+  ```
+</ParamField>
+
+<ParamField path="SX128X_SPI_MOSI" type="int" default="19">
+  SPI MOSI (Master Out Slave In) pin.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_SPI_MOSI=19
+  ```
+</ParamField>
+
+<ParamField path="SX128X_SPI_MISO" type="int" default="16">
+  SPI MISO (Master In Slave Out) pin.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_SPI_MISO=16
+  ```
+</ParamField>
+
+<ParamField path="SX128X_SPI_CS" type="int" default="17">
+  SPI chip select pin.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_SPI_CS=17
+  ```
+</ParamField>
+
+### Radio Control Pins
+
+<ParamField path="SX128X_SPI_BUSY" type="int" default="20">
+  Radio BUSY signal pin.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_SPI_BUSY=20
+  ```
+  
+  The BUSY pin indicates when the radio is processing a command and cannot accept new commands.
+</ParamField>
+
+<ParamField path="SX128X_SPI_DIO1" type="int" default="21">
+  Radio DIO1 interrupt pin.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_SPI_DIO1=21
+  ```
+  
+  Used for packet reception interrupts.
+</ParamField>
+
+<ParamField path="SX128X_SPI_RST" type="int" default="22">
+  Radio reset pin.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_SPI_RST=22
+  ```
+</ParamField>
+
+### Radio Enable Pins (Optional)
+
+<ParamField path="SX128X_RXEN" type="int" default="14">
+  RX enable pin (optional, for RF switch control).
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_RXEN=14
+  ```
+  
+  Used to control an external RF switch for RX mode.
+</ParamField>
+
+<ParamField path="SX128X_TXEN" type="int" default="15">
+  TX enable pin (optional, for RF switch control).
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_TXEN=15
+  ```
+  
+  Used to control an external RF switch for TX mode.
+</ParamField>
+
+### Radio RF Parameters
+
+<ParamField path="SX128X_FREQ_MHZ" type="float" default="2420.0">
+  Operating frequency in MHz.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_FREQ_MHZ=2450.0
+  ```
+  
+  Range: 2400-2500 MHz (check local regulations)
+</ParamField>
+
+<ParamField path="SX128X_BW_KHZ" type="float" default="812.5">
+  Bandwidth in kHz.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_BW_KHZ=1625.0
+  ```
+  
+  Supported: 203.125, 406.25, 812.5, 1625.0 kHz
+</ParamField>
+
+<ParamField path="SX128X_SF" type="int" default="7">
+  Spreading Factor (LoRa mode only).
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_SF=8
+  ```
+  
+  Range: 5-12
+</ParamField>
+
+<ParamField path="SX128X_CR" type="int" default="5">
+  Coding Rate (LoRa mode: 4/5).
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_CR=6
+  ```
+  
+  Values: 5 (4/5), 6 (4/6), 7 (4/7), 8 (4/8)
+</ParamField>
+
+<ParamField path="SX128X_OUTPUT_POWER_DBM" type="int" default="10">
+  Transmit power in dBm.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_OUTPUT_POWER_DBM=13
+  ```
+  
+  Range: -18 to +13 dBm
+</ParamField>
+
+### FLRC Mode Parameters
+
+<ParamField path="SX128X_FLRC_BR_KBPS" type="int" default="1300">
+  FLRC bitrate in kbps.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_FLRC_BR_KBPS=650
+  ```
+  
+  Supported: 260, 325, 520, 650, 1040, 1300 kbps
+</ParamField>
+
+<ParamField path="SX128X_FLRC_CR" type="int" default="2">
+  FLRC coding rate denominator.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_FLRC_CR=2
+  ```
+  
+  Values: 1 (1/1), 2 (1/2), 4 (3/4)
+</ParamField>
+
+<ParamField path="SX128X_FLRC_PREAMBLE_BITS" type="int" default="16">
+  FLRC preamble length in bits.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_FLRC_PREAMBLE_BITS=32
+  ```
+  
+  Supported: 8, 12, 16, 20, 24, 28, 32 bits
+</ParamField>
+
+<ParamField path="SX128X_FLRC_SHAPING" type="constant" default="RADIOLIB_SHAPING_0_5">
+  FLRC Gaussian filter shaping.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_FLRC_SHAPING=RADIOLIB_SHAPING_1_0
+  ```
+  
+  Values: `RADIOLIB_SHAPING_0_5`, `RADIOLIB_SHAPING_1_0`
+</ParamField>
+
+<ParamField path="SX128X_FIXED_PACKET_LEN" type="int" default="33">
+  Fixed packet length in bytes (0 = variable length).
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DSX128X_FIXED_PACKET_LEN=33
+  ```
+  
+  Set to 0 for variable-length packets (not recommended).
+</ParamField>
+
+## UART Protocol Configuration
+
+<ParamField path="UART_PROTOCOL_TX" type="int" default="8">
+  TX module UART transmit pin.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DUART_PROTOCOL_TX=8
+  ```
+  
+  Connects to RC board UART RX pin.
+</ParamField>
+
+<ParamField path="UART_PROTOCOL_RX" type="int" default="9">
+  TX module UART receive pin.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DUART_PROTOCOL_RX=9
+  ```
+  
+  Connects to RC board UART TX pin.
+</ParamField>
+
+<ParamField path="UART_PROTOCOL_BAUDRATE" type="int" default="420000">
+  UART baudrate (defined in code, not typically overridden).
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DUART_PROTOCOL_BAUDRATE=115200
+  ```
+  
+  <Warning>
+  Changing from 420000 may increase latency. Both sides must match.
+  </Warning>
+</ParamField>
+
+## Pairing and Security
+
+<ParamField path="DEFAULT_BINDING_PHRASE" type="string" default="FPV-DEFAULT-2024">
+  Default binding phrase for pairing.
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DDEFAULT_BINDING_PHRASE=\"MyCustomPhrase\"
+  ```
+  
+  <Warning>
+  Both TX and RX must use the same binding phrase to pair. Enclose in escaped quotes.
+  </Warning>
+  
+  <Accordion title="Binding Phrase Security">
+    - The binding phrase is hashed to create an 8-byte binding UID
+    - This UID is exchanged during pairing to verify both devices share the same phrase
+    - After successful pairing, a shared encryption key is generated
+    - The binding phrase itself is never transmitted over the air
+    - Change the default phrase for production use
+    
+    **Example custom phrases**:
+    ```ini
+    -DDEFAULT_BINDING_PHRASE=\"MyDrone-2024\"
+    -DDEFAULT_BINDING_PHRASE=\"RacingQuad-TX1\"
+    -DDEFAULT_BINDING_PHRASE=\"SecureLink-XYZ\"
+    ```
+  </Accordion>
+</ParamField>
+
+<ParamField path="AUTO_PAIR_TIMEOUT_SEC" type="int" default="5">
+  Auto-pairing timeout in seconds (RX only).
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DAUTO_PAIR_TIMEOUT_SEC=10
+  ```
+  
+  - Set to 0 to disable auto-pairing
+  - Maximum: 120 seconds
+  - RX enters pairing mode after timeout if not paired
+</ParamField>
+
+## Other Configuration
+
+<ParamField path="INTERNAL_ADC" type="bool" default="undefined">
+  Use internal ADC instead of external ADS1115 (RC board only).
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DINTERNAL_ADC=1
+  ```
+  
+  Used in `rc-rp2350` environment for RP2350-based RC boards.
+</ParamField>
+
+<ParamField path="PIO_FRAMEWORK_ARDUINO_ENABLE_BLUETOOTH" type="bool" default="undefined">
+  Enable Bluetooth support (legacy BLE environments).
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DPIO_FRAMEWORK_ARDUINO_ENABLE_BLUETOOTH
+  ```
+  
+  Only used in deprecated `tx-ble` and `rx-ble` environments.
+</ParamField>
+
+## Complete Configuration Examples
+
+<Accordion title="TX Module (Default)">
+  ```ini platformio.ini
+  [env:tx_sx128x]
+  platform = https://github.com/maxgerhardt/platform-raspberrypi.git
+  board = rpipico
+  lib_ldf_mode = deep+
+  monitor_speed = 115200
+  framework = arduino
+  board_build.core = earlephilhower
+  lib_deps = 
+      jgromes/RadioLib@^7.4.0
+  build_flags = 
+      -DTX_SIDE=1
+      -DSX128X_SPI_SCK=18
+      -DSX128X_SPI_MOSI=19
+      -DSX128X_SPI_MISO=16
+      -DSX128X_SPI_CS=17
+      -DSX128X_SPI_BUSY=20
+      -DSX128X_SPI_DIO1=21
+      -DSX128X_SPI_RST=22
+      -DSX128X_RXEN=14
+      -DSX128X_TXEN=15
+      -DUART_PROTOCOL_TX=8
+      -DUART_PROTOCOL_RX=9
+      -DDEFAULT_BINDING_PHRASE=\"Kikobot-02\"
+  build_src_filter = +<tx_main_sx128x.cpp> -<main.cpp> -<tx_main.cpp> -<tx_main_bt.cpp> -<tx_main_ble.cpp> -<tx_main_test.cpp> -<rc_crsf_main.cpp>
+  ```
+</Accordion>
+
+<Accordion title="RX Module (Default)">
+  ```ini platformio.ini
+  [env:rx_sx128x]
+  platform = https://github.com/maxgerhardt/platform-raspberrypi.git
+  board = rpipicow
+  lib_ldf_mode = deep+
+  framework = arduino
+  board_build.core = earlephilhower
+  monitor_speed = 115200
+  lib_deps =
+      jgromes/RadioLib@^7.4.0
+      fastled/FastLED@^3.6.0
+  build_flags =
+      -DRX_SIDE=1
+      -DSX128X_SPI_SCK=18
+      -DSX128X_SPI_MOSI=19
+      -DSX128X_SPI_MISO=16
+      -DSX128X_SPI_CS=17
+      -DSX128X_SPI_BUSY=20
+      -DSX128X_SPI_DIO1=21
+      -DSX128X_SPI_RST=22
+      -DSX128X_RXEN=14
+      -DSX128X_TXEN=15
+      -DAUTO_PAIR_TIMEOUT_SEC=5
+      -DDEFAULT_BINDING_PHRASE=\"Kikobot-02\"
+  build_src_filter = +<rx_main_sx128x.cpp> -<main.cpp> -<rx_main.cpp> -<rx_main_ppm.cpp> -<rx_main_bt.cpp> -<rx_main_ble.cpp> -<rc_crsf_main.cpp>
+  ```
+</Accordion>
+
+<Accordion title="Custom Long-Range Configuration">
+  ```ini platformio.ini
+  [env:rx_sx128x_longrange]
+  platform = https://github.com/maxgerhardt/platform-raspberrypi.git
+  board = rpipicow
+  lib_ldf_mode = deep+
+  framework = arduino
+  board_build.core = earlephilhower
+  monitor_speed = 115200
+  lib_deps =
+      jgromes/RadioLib@^7.4.0
+      fastled/FastLED@^3.6.0
+  build_flags =
+      -DRX_SIDE=1
+      # Standard pin configuration
+      -DSX128X_SPI_SCK=18
+      -DSX128X_SPI_MOSI=19
+      -DSX128X_SPI_MISO=16
+      -DSX128X_SPI_CS=17
+      -DSX128X_SPI_BUSY=20
+      -DSX128X_SPI_DIO1=21
+      -DSX128X_SPI_RST=22
+      -DSX128X_RXEN=14
+      -DSX128X_TXEN=15
+      # Long-range RF settings
+      -DSX128X_FREQ_MHZ=2420.0
+      -DSX128X_OUTPUT_POWER_DBM=13
+      -DSX128X_FLRC_BR_KBPS=520
+      -DSX128X_FLRC_CR=2
+      -DSX128X_FLRC_PREAMBLE_BITS=32
+      # Pairing
+      -DAUTO_PAIR_TIMEOUT_SEC=10
+      -DDEFAULT_BINDING_PHRASE=\"LongRange-01\"
+  build_src_filter = +<rx_main_sx128x.cpp> -<main.cpp> -<rx_main.cpp> -<rx_main_ppm.cpp> -<rx_main_bt.cpp> -<rx_main_ble.cpp> -<rc_crsf_main.cpp>
+  ```
+</Accordion>
+
+<Accordion title="Custom Pin Configuration">
+  If your hardware uses different pins:
+  
+  ```ini platformio.ini
+  build_flags = 
+      -DRX_SIDE=1
+      # Custom SPI pins
+      -DSX128X_SPI_SCK=10
+      -DSX128X_SPI_MOSI=11
+      -DSX128X_SPI_MISO=12
+      -DSX128X_SPI_CS=13
+      # Custom control pins
+      -DSX128X_SPI_BUSY=14
+      -DSX128X_SPI_DIO1=15
+      -DSX128X_SPI_RST=16
+      # Optional: Custom RF switch pins
+      -DSX128X_RXEN=8
+      -DSX128X_TXEN=9
+      # Use custom frequency
+      -DSX128X_FREQ_MHZ=2460.0
+      -DDEFAULT_BINDING_PHRASE=\"CustomHW-01\"
+  ```
+</Accordion>
+
+## Build Flag Categories Summary
+
+| Category | Flags | Purpose |
+|----------|-------|----------|
+| **Side Selection** | TX_SIDE, RX_SIDE, RC_CRSF_SIDE | Determine which firmware to build |
+| **SPI Pins** | SX128X_SPI_SCK, MOSI, MISO, CS | SPI bus configuration |
+| **Radio Control** | SX128X_SPI_BUSY, DIO1, RST | Radio control signals |
+| **RF Switch** | SX128X_RXEN, TXEN | External RF switch control (optional) |
+| **RF Parameters** | SX128X_FREQ_MHZ, BW_KHZ, OUTPUT_POWER_DBM | Radio frequency and power |
+| **FLRC Mode** | SX128X_FLRC_BR_KBPS, CR, PREAMBLE_BITS, SHAPING | FLRC modulation settings |
+| **Packet Config** | SX128X_FIXED_PACKET_LEN | Packet length mode |
+| **UART** | UART_PROTOCOL_TX, RX, BAUDRATE | RC board communication |
+| **Pairing** | DEFAULT_BINDING_PHRASE, AUTO_PAIR_TIMEOUT_SEC | Security and pairing |
+| **Other** | INTERNAL_ADC, PIO_FRAMEWORK_ARDUINO_ENABLE_BLUETOOTH | Miscellaneous features |
+
+## See Also
+
+- [Radio Settings](/configuration/radio-settings) - Detailed RF configuration guide
+- [UART Protocol](/configuration/uart-protocol) - UART communication protocol
+- [Pairing Process](/configuration/pairing) - Device pairing and security

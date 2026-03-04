@@ -1,122 +1,111 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "XLRS",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#FF6B35",
+    "light": "#F7931E",
+    "dark": "#C41E3A"
   },
-  "favicon": "/favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/xlrs-dev/xlrs"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/xlrs-dev/xlrs"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "hardware-requirements"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Build & Deploy",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "build/platformio-setup",
+              "build/building-firmware",
+              "build/flashing-devices"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Architecture",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "architecture/overview",
+              "architecture/communication-flow",
+              "architecture/components"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Hardware Guides",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "hardware/tx-module",
+              "hardware/rx-module",
+              "hardware/rc-board",
+              "hardware/wiring"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/radio-settings",
+              "configuration/uart-protocol",
+              "configuration/build-flags",
+              "configuration/pairing"
+            ]
+          },
+          {
+            "group": "Troubleshooting",
+            "pages": [
+              "troubleshooting/common-issues",
+              "troubleshooting/connection-problems",
+              "troubleshooting/debugging"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Libraries",
             "pages": [
-              "api-reference/introduction"
+              "api/sx128x-link",
+              "api/crsf",
+              "api/uart-protocol",
+              "api/security",
+              "api/protocol"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Message Types",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/radio-messages",
+              "api/uart-messages",
+              "api/crsf-frames"
+            ]
+          },
+          {
+            "group": "Data Structures",
+            "pages": [
+              "api/channel-data",
+              "api/telemetry",
+              "api/status"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

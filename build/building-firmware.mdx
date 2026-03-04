@@ -1,0 +1,379 @@
+---
+title: 'Building Firmware'
+description: 'Build firmware for TX modules, RX modules, and RC boards using PlatformIO'
+---
+
+## Overview
+
+XLRS firmware is built using PlatformIO, which manages compilation, linking, and packaging for RP2040 boards. Each hardware component (TX, RX, RC board) has its own build environment.
+
+## Build Environments
+
+The project supports multiple build targets defined in `platformio.ini`:
+
+### Primary Environments
+
+| Environment | Hardware | Purpose |
+|-------------|----------|----------|
+| **tx_sx128x** | RP2040 Pico | TX module with SX1280 radio |
+| **rx_sx128x** | RP2040 Pico W | RX module with SX1280 radio |
+| **rc-crsf** | RP2040 Pico | RC board with inputs and display |
+
+### Additional Environments
+
+| Environment | Hardware | Purpose |
+|-------------|----------|----------|
+| **rc-rp2350** | RP2350 Pico 2 | RC board for RP2350 with internal ADC |
+| **sx1280_debug** | RP2040 Pico | SX1280 radio debugging tool |
+
+<Warning>
+  The legacy BLE environments (`tx-ble`, `rx-ble`) are deprecated. Use SX1280-based environments for all new projects.
+</Warning>
+
+## Building Firmware
+
+### Using VS Code with PlatformIO IDE
+
+<Steps>
+  <Step title="Select Environment">
+    Click the environment selector in the bottom status bar and choose your target (e.g., `tx_sx128x`)
+  </Step>
+  
+  <Step title="Build">
+    Click the **Build** button (checkmark icon) in the bottom status bar, or press `Ctrl+Alt+B`
+  </Step>
+  
+  <Step title="Wait for Completion">
+    Monitor the build progress in the terminal. First builds take longer as dependencies are downloaded.
+  </Step>
+  
+  <Step title="Verify Success">
+    Look for `[SUCCESS]` message indicating the build completed without errors
+  </Step>
+</Steps>
+
+### Using PlatformIO Core (CLI)
+
+Build firmware from the command line:
+
+```bash
+# Build TX module
+pio run -e tx_sx128x
+
+# Build RX module
+pio run -e rx_sx128x
+
+# Build RC board
+pio run -e rc-crsf
+```
+
+## Building Specific Environments
+
+### TX Module (tx_sx128x)
+
+The TX module receives channel data from the RC board via UART and transmits it over SX1280 radio.
+
+```bash
+pio run -e tx_sx128x
+```
+
+**Key Features:**
+- SX1280 radio driver (RadioLib)
+- UART protocol for RC board communication (420000 baud)
+- AES-128 encryption and HMAC authentication
+- Device pairing with binding phrase
+- Connection state machine
+
+**Build Flags:**
+- `-DTX_SIDE=1`: Identifies firmware as TX side
+- `-DSX128X_SPI_*`: SPI pin mappings for SX1280
+- `-DUART_PROTOCOL_TX=8`: UART TX pin (to RC board)
+- `-DUART_PROTOCOL_RX=9`: UART RX pin (from RC board)
+- `-DDEFAULT_BINDING_PHRASE="Kikobot-02"`: Default pairing phrase
+
+**Dependencies:**
+- RadioLib v7.4.0+ (SX1280 driver)
+
+### RX Module (rx_sx128x)
+
+The RX module receives radio transmissions and outputs CRSF protocol to the flight controller.
+
+```bash
+pio run -e rx_sx128x
+```
+
+**Key Features:**
+- SX1280 radio receiver
+- CRSF output at 420000 baud (compatible with Betaflight/ELRS)
+- Battery telemetry from flight controller
+- Auto-pairing mode support
+- FastLED status indicators
+
+**Build Flags:**
+- `-DRX_SIDE=1`: Identifies firmware as RX side
+- `-DSX128X_SPI_*`: SPI pin mappings for SX1280
+- `-DAUTO_PAIR_TIMEOUT_SEC=5`: Auto-enter pairing after 5 seconds
+- `-DDEFAULT_BINDING_PHRASE="Kikobot-02"`: Default pairing phrase
+
+**Dependencies:**
+- RadioLib v7.4.0+ (SX1280 driver)
+- FastLED v3.6.0+ (LED indicators)
+
+**Board:** Uses `rpipicow` (Pico W) for potential future WiFi features
+
+### RC Board (rc-crsf)
+
+The RC board reads analog inputs, displays telemetry, and communicates with the TX module.
+
+```bash
+pio run -e rc-crsf
+```
+
+**Key Features:**
+- SH1106G OLED display (128x64)
+- ADS1115 16-bit ADC for analog inputs
+- 2x 2-axis joysticks (4 analog channels)
+- 4x toggle switches
+- UART communication with TX module
+- Battery monitoring
+
+**Build Flags:**
+- `-DRC_CRSF_SIDE=1`: Identifies firmware as RC board
+
+**Dependencies:**
+- Adafruit SH110X v2.1.14+ (OLED display)
+- Adafruit GFX Library v1.11.9+ (graphics)
+- Adafruit ADS1X15 v2.2.3+ (ADC)
+
+### RC Board for RP2350 (rc-rp2350)
+
+Alternative RC board build for RP2350 (Pico 2) with internal ADC:
+
+```bash
+pio run -e rc-rp2350
+```
+
+**Differences from rc-crsf:**
+- Uses `rpipico2` board (RP2350)
+- `-DINTERNAL_ADC=1`: Uses internal ADC instead of external ADS1115
+- Same display and communication features
+
+## Build Artifacts
+
+After a successful build, firmware files are generated in `.pio/build/[environment]/`:
+
+```
+.pio/build/tx_sx128x/
+├── firmware.elf        # ELF executable with debug symbols
+├── firmware.bin        # Raw binary firmware
+└── firmware.uf2        # UF2 bootloader format (used for flashing)
+```
+
+### File Formats
+
+- **firmware.uf2**: Drag-and-drop format for RP2040 bootloader (recommended)
+- **firmware.elf**: Executable with debug symbols (for debugging)
+- **firmware.bin**: Raw binary (for advanced flashing methods)
+
+<Note>
+  The `.uf2` file is what you'll use to flash your RP2040 boards. It's specifically designed for the RP2040 USB bootloader.
+</Note>
+
+## Building Multiple Environments
+
+Build all environments at once:
+
+```bash
+# Build all defined environments
+pio run
+
+# Build specific environments
+pio run -e tx_sx128x -e rx_sx128x -e rc-crsf
+```
+
+## Clean Builds
+
+Sometimes you need to clean build artifacts and rebuild from scratch:
+
+```bash
+# Clean a specific environment
+pio run -e tx_sx128x -t clean
+
+# Clean all environments
+pio run -t clean
+
+# Clean and rebuild
+pio run -e tx_sx128x -t clean && pio run -e tx_sx128x
+```
+
+<Warning>
+  Clean builds are recommended after:
+  - Changing build flags in `platformio.ini`
+  - Updating dependencies
+  - Switching between significantly different code versions
+  - Encountering unexplained build errors
+</Warning>
+
+## Customizing Build Flags
+
+You can override build flags without modifying `platformio.ini`:
+
+### Via Command Line
+
+```bash
+# Change binding phrase
+pio run -e tx_sx128x --build-flag="-DDEFAULT_BINDING_PHRASE=\"MyPhrase\""
+
+# Change radio frequency
+pio run -e tx_sx128x --build-flag="-DSX128X_FREQ_MHZ=2450.0"
+
+# Multiple flags
+pio run -e tx_sx128x \
+  --build-flag="-DDEFAULT_BINDING_PHRASE=\"MyPhrase\"" \
+  --build-flag="-DSX128X_OUTPUT_POWER_DBM=13"
+```
+
+### Via platformio.ini
+
+For permanent changes, edit `platformio.ini`:
+
+```ini
+[env:tx_sx128x]
+...
+build_flags = 
+    -DTX_SIDE=1
+    -DDEFAULT_BINDING_PHRASE=\"MyCustomPhrase\"
+    -DSX128X_OUTPUT_POWER_DBM=13
+    ...
+```
+
+## Common Build Flags
+
+### Radio Configuration
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `SX128X_FREQ_MHZ` | 2420.0 | Radio frequency in MHz |
+| `SX128X_OUTPUT_POWER_DBM` | 10 | TX power (max 13 dBm) |
+| `SX128X_FLRC_BR_KBPS` | 1300 | FLRC bitrate in kbps |
+| `SX128X_FIXED_PACKET_LEN` | 33 | Fixed packet length |
+
+### Pin Mappings
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `SX128X_SPI_SCK` | 18 | SPI clock pin |
+| `SX128X_SPI_MOSI` | 19 | SPI MOSI pin |
+| `SX128X_SPI_MISO` | 16 | SPI MISO pin |
+| `SX128X_SPI_CS` | 17 | SPI chip select |
+| `SX128X_SPI_BUSY` | 20 | Radio BUSY pin |
+| `SX128X_SPI_DIO1` | 21 | Radio DIO1 interrupt |
+| `SX128X_SPI_RST` | 22 | Radio reset pin |
+
+### Security & Pairing
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `DEFAULT_BINDING_PHRASE` | "Kikobot-02" | Pairing binding phrase |
+| `AUTO_PAIR_TIMEOUT_SEC` | 5 (RX only) | Auto-pairing timeout (0=disabled) |
+
+### UART Protocol
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `UART_PROTOCOL_TX` | 8 | UART TX pin |
+| `UART_PROTOCOL_RX` | 9 | UART RX pin |
+
+See [Build Flags](/configuration/build-flags) for a complete reference.
+
+## Verbose Build Output
+
+For detailed build information (useful for debugging):
+
+```bash
+# Verbose output
+pio run -e tx_sx128x -v
+
+# Very verbose (shows all commands)
+pio run -e tx_sx128x -vv
+```
+
+## Build Performance
+
+### First Build
+
+The first build takes longer because PlatformIO must:
+1. Download the RP2040 platform (~100-200 MB)
+2. Download and compile libraries (RadioLib, Adafruit, etc.)
+3. Set up toolchains and build tools
+
+Expect 5-10 minutes for the initial build.
+
+### Incremental Builds
+
+Subsequent builds are much faster (typically 10-30 seconds) because:
+- Only changed files are recompiled
+- Libraries are already compiled
+- Platform tools are cached
+
+### Speeding Up Builds
+
+```bash
+# Use multiple CPU cores
+pio run -e tx_sx128x -j 4
+
+# Disable automatic updates
+pio run -e tx_sx128x --disable-auto-clean
+```
+
+## Troubleshooting Build Issues
+
+### Build Fails with "Platform not found"
+
+```bash
+# Manually install the platform
+pio platform install https://github.com/maxgerhardt/platform-raspberrypi.git
+```
+
+### Library Dependency Errors
+
+```bash
+# Update library database
+pio lib update
+
+# Reinstall specific library
+pio lib uninstall RadioLib
+pio lib install "jgromes/RadioLib@^7.4.0"
+```
+
+### Out of Memory During Build
+
+```bash
+# Reduce parallel jobs
+pio run -e tx_sx128x -j 1
+
+# Clear cache to free space
+pio system prune
+```
+
+### Compiler Errors After Code Changes
+
+```bash
+# Clean and rebuild
+pio run -e tx_sx128x -t clean
+pio run -e tx_sx128x
+```
+
+### "Multiple definitions" Linker Errors
+
+- Check for duplicate source files in build filters
+- Ensure header guards are properly implemented
+- Verify `build_src_filter` in `platformio.ini` is correct
+
+## Next Steps
+
+Once you've built the firmware:
+
+- Learn how to [flash devices](/build/flashing-devices) with your compiled firmware
+- Understand [customization options](/configuration/build-flags) for your setup
+- Explore [pairing procedures](/configuration/pairing) for TX/RX communication

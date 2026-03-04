@@ -1,0 +1,488 @@
+---
+title: 'Component Details'
+description: 'Detailed breakdown of each component: RC board, TX module, and RX module'
+---
+
+## Component Overview
+
+XLRS consists of three independent components, each with specific responsibilities:
+
+<CardGroup cols={3}>
+  <Card title="RC Board" icon="gamepad">
+    Input reading, calibration, display, and battery management
+  </Card>
+  <Card title="TX Module" icon="signal">
+    UART protocol, radio transmission, and telemetry forwarding
+  </Card>
+  <Card title="RX Module" icon="drone">
+    Radio reception, CRSF output, and telemetry collection
+  </Card>
+</CardGroup>
+
+## RC Board (rc-crsf)
+
+**Source**: `src/rc_crsf_main.cpp`
+
+### Hardware Configuration
+
+- **MCU**: Raspberry Pi Pico (RP2040) or RP2350
+- **Display**: SH1106G OLED (128x64, I2C address 0x3C)
+- **ADC**: ADS1115 16-bit I2C ADC (address 0x48) or RP2350 internal ADC
+- **Power Management**: BQ2562X charger IC (I2C address 0x6A)
+- **I2C Bus**: SDA=GP4, SCL=GP5 (100kHz init, 400kHz run)
+
+### Pin Assignments
+
+| Function | Pin(s) | Description |
+|----------|--------|-------------|
+| I2C SDA | GP4 | I2C data for OLED, ADC, charger |
+| I2C SCL | GP5 | I2C clock |
+| UART TX | GP8 | Transmit to TX module |
+| UART RX | GP9 | Receive from TX module |
+| Toggle Switch 1 | GP1, GP2 | Dual-pin switch input |
+| Toggle Switch 2 | GP3, GP6 | Dual-pin switch input |
+| Toggle Switch 3 | GP7, GP10 | Dual-pin switch input |
+| Toggle Switch 4 | GP11, GP12 | Dual-pin switch input |
+| Enter Button | GP13 | Navigation/command button |
+| Back Button | GP14 | Navigation/status button |
+| Power Button | GP19 | Shutdown button (active LOW) |
+| Buzzer | GP24 | Boot jingle |
+
+**Internal ADC pins** (RP2350 mode):
+- Aileron (Stick1 X): GP26 (ADC0)
+- Elevator (Stick1 Y): GP27 (ADC1)
+- Rudder (Stick2 X): GP28 (ADC2)
+- Throttle (Stick2 Y): GP29 (ADC3)
+
+### Responsibilities
+
+#### 1. Input Reading (250Hz)
+
+**Analog Sticks**:
+- Read 4 analog channels via ADS1115 (16-bit) or internal ADC (12-bit scaled to 16-bit)
+- Apply calibration (min/max/center stored in EEPROM)
+- Apply 5% deadzone to center sticks (except throttle)
+- Map to CRSF range (1000-2000µs)
+
+**Implementation**: `src/rc_crsf_main.cpp:335-439`
+
+```cpp
+void readInputs() {
+    // Read analog sticks from ADS1115 or internal ADC
+    stick1_x = ads.readADC_SingleEnded(AILERON_CHANNEL);   // 0-32767
+    stick1_y = ads.readADC_SingleEnded(ELEVATOR_CHANNEL);
+    stick2_x = ads.readADC_SingleEnded(RUDDER_CHANNEL);
+    stick2_y = ads.readADC_SingleEnded(THROTTLE_CHANNEL);
+    
+    // Apply 5% deadzone
+    stick1_x = applyDeadzone(stick1_x, calib.min[0], calib.max[0], 0.05f);
+    // ... (repeat for other sticks)
+    
+    // Map to channel values (1000-2000)
+    channels[0] = mapCalInverted(stick1_y, calib.min[0], calib.max[0]);  // Aileron
+    channels[1] = mapCal(stick1_x, calib.min[1], calib.max[1]);          // Elevator
+    // ... (repeat for rudder/throttle)
+    
+    // Read toggle switches (dual-pin reading)
+    channels[4] = readToggle(TOGGLE_SWITCH1_IN1_PIN, TOGGLE_SWITCH1_IN2_PIN);
+    // ... (repeat for other switches)
+}
+```
+
+**Toggle Switches**:
+- Dual-pin reading: IN1 high = 1000µs, IN2 high = 2000µs, both low = 1500µs
+- INPUT_PULLUP configuration
+- 4 channels (Ch4-7 for Aux1-Aux4)
+
+#### 2. UART Communication (250Hz TX, 5Hz RX)
+
+**Transmit** (RC → TX):
+- Send `UART_MSG_CHANNELS` at 250Hz (4ms intervals)
+- Frame format: Header (0x55) + Type + Length + Payload + CRC8
+- 420kbps baudrate on Serial2 (GP8/GP9)
+
+**Receive** (TX → RC):
+- `UART_MSG_TELEMETRY`: RSSI, SNR, RX battery, link quality
+- `UART_MSG_STATUS`: Connection state, pairing state, packet stats
+- `UART_MSG_ACK`/`UART_MSG_ERROR`: Command acknowledgments
+- `UART_MSG_PONG`: Response to ping (device health check)
+
+**Implementation**: `src/rc_crsf_main.cpp:444-449`, `src/rc_crsf_main.cpp:454-461`
+
+#### 3. Display Management (5Hz)
+
+**OLED Display** (SH1106G, 128x64):
+- **Line 1**: RC-CRSF, TX battery voltage & percent
+- **Line 2**: Charging status (NChg/CC/CV/Top) and VBUS status
+- **Line 3**: TX connection state and RSSI
+- **Line 4**: RX battery voltage, percent, and SNR
+
+**Implementation**: `src/rc_crsf_main.cpp:568-638`
+
+#### 4. Battery Management
+
+**BQ2562X Charger IC**:
+- Read battery voltage via one-shot ADC conversion (every 5s)
+- Monitor charging status (Not Charging, CC, CV, Topoff)
+- Monitor VBUS status (SDP, CDP, DCP, etc.)
+- Support shutdown mode via power button (GPIO 19)
+
+**Implementation**: `src/rc_crsf_main.cpp:918-981`
+
+#### 5. Calibration Storage
+
+**EEPROM Storage**:
+- Magic value (0xC5) at address 150
+- Calibration data at address 152
+- Stores min/max/center for 4 analog channels
+
+**Implementation**: `src/rc_crsf_main.cpp:697-716`
+
+#### 6. Device Health Check
+
+**TX Module Ping/Pong**:
+- Send `UART_MSG_PING` every 1 second
+- Expect `UART_MSG_PONG` within 2 seconds
+- Mark TX disconnected if no pong received
+
+**Implementation**: `src/rc_crsf_main.cpp:643-692`
+
+---
+
+## TX Module (tx_sx128x)
+
+**Source**: `src/tx_main_sx128x.cpp`
+
+### Hardware Configuration
+
+- **MCU**: Raspberry Pi Pico (RP2040)
+- **Radio**: SX1280 2.4GHz transceiver (SPI interface)
+
+### Pin Assignments
+
+| Signal | Pin | Description |
+|--------|-----|-------------|
+| UART TX | GP8 | Transmit to RC board |
+| UART RX | GP9 | Receive from RC board |
+| SPI SCK | GP18 | SPI clock to SX1280 |
+| SPI MOSI | GP19 | SPI data out |
+| SPI MISO | GP16 | SPI data in |
+| SPI CS | GP17 | Chip select |
+| SX1280 BUSY | GP20 | Radio busy signal |
+| SX1280 DIO1 | GP21 | Data interrupt |
+| SX1280 RST | GP22 | Radio reset |
+| SX1280 RXEN | GP14 | RX enable (optional) |
+| SX1280 TXEN | GP15 | TX enable (optional) |
+
+### Responsibilities
+
+#### 1. UART Protocol Handler
+
+**Receive from RC board**:
+- `UART_MSG_CHANNELS`: Update local channel array (8 channels)
+- `UART_MSG_CMD_PAIR`: Enter pairing mode
+- `UART_MSG_CMD_BOND`: Check bonding status
+- `UART_MSG_CMD_RESTART`: Restart module
+- `UART_MSG_CMD_STATUS_REQ`: Send status immediately
+- `UART_MSG_PING`: Respond with PONG
+
+**Implementation**: `src/tx_main_sx128x.cpp:336-393`
+
+#### 2. Radio Transmission
+
+**Channel Data** (~50Hz):
+- Encrypt channel data with AES-128
+- Add HMAC-SHA256 (4 bytes)
+- Send `MSG_CHANNELS` packet (33 bytes)
+- Brief pause after SYNC packets to allow SYNC_ACK reception
+
+**Sync Packets** (500ms intervals):
+- Send `MSG_SYNC` with sequence number and timestamp
+- Monitor SYNC_ACK reception
+- Use hysteresis (3 missed ACKs) to prevent false disconnects
+
+**Implementation**: `src/tx_main_sx128x.cpp:212-234`, `include/PacketHandler.h`
+
+#### 3. Pairing Management
+
+**Pairing Mode**:
+- Send `MSG_PAIRING` with binding UID (from binding phrase)
+- Wait for `MSG_PAIRING_ACK` from RX
+- Store RX device ID in EEPROM
+- Generate shared encryption key
+- Transition to CONNECTING state
+
+**Implementation**: `src/tx_main_sx128x.cpp:206-208`, `src/pairing.cpp`
+
+#### 4. Telemetry Collection
+
+**Radio RX**:
+- Receive `MSG_BATTERY` from RX (5Hz)
+- Extract voltage, current, remaining percentage
+- Store last RSSI and SNR from radio packets
+
+**Implementation**: `src/tx_main_sx128x.cpp:248-267`
+
+#### 5. Telemetry Forwarding (5Hz)
+
+**Send to RC board**:
+- `UART_MSG_TELEMETRY`: RSSI, SNR, RX battery, link quality
+- `UART_MSG_STATUS`: Connection state, pairing state, packet stats
+
+**Implementation**: `src/tx_main_sx128x.cpp:398-448`
+
+#### 6. Connection State Machine
+
+**States**:
+- **DISCONNECTED**: Waiting for pairing
+- **PAIRING**: Sending pairing packets
+- **CONNECTING**: Establishing SYNC handshake
+- **CONNECTED**: Active link
+- **LOST**: Connection timeout (3 missed SYNC_ACKs)
+
+**Implementation**: `src/tx_main_sx128x.cpp:462-534`
+
+---
+
+## RX Module (rx_sx128x)
+
+**Source**: `src/rx_main_sx128x.cpp`
+
+### Hardware Configuration
+
+- **MCU**: Raspberry Pi Pico W (RP2040 with WiFi)
+- **Radio**: SX1280 2.4GHz transceiver (SPI interface)
+- **LED**: WS2812 RGB LED (GPIO 13)
+
+### Pin Assignments
+
+| Signal | Pin | Description |
+|--------|-----|-------------|
+| CRSF TX | GP8 | Transmit to FC (CRSF RX) |
+| CRSF RX | GP9 | Receive from FC (CRSF TX) |
+| SPI SCK | GP18 | SPI clock to SX1280 |
+| SPI MOSI | GP19 | SPI data out |
+| SPI MISO | GP16 | SPI data in |
+| SPI CS | GP17 | Chip select |
+| SX1280 BUSY | GP20 | Radio busy signal |
+| SX1280 DIO1 | GP21 | Data interrupt |
+| SX1280 RST | GP22 | Radio reset |
+| SX1280 RXEN | GP14 | RX enable (optional) |
+| SX1280 TXEN | GP15 | TX enable (optional) |
+| WS2812 LED | GP13 | Status indicator LED |
+
+### Responsibilities
+
+#### 1. Radio Reception
+
+**Channel Data**:
+- Receive `MSG_CHANNELS` packets from TX
+- Verify device ID matches paired TX
+- Decrypt with AES-128 (shared pairing key)
+- Verify HMAC-SHA256 (4 bytes)
+- Check sequence number for replay attacks
+- Update local channel array (8 channels)
+
+**Implementation**: `src/rx_main_sx128x.cpp:284-323`
+
+**Sync Packets**:
+- Receive `MSG_SYNC` from TX
+- Verify device ID and HMAC
+- Respond with `MSG_SYNC_ACK` (includes sequence number)
+- Update lastSyncReceived timestamp
+
+**Implementation**: `src/rx_main_sx128x.cpp:332-356`
+
+#### 2. Pairing Handler
+
+**Pairing Mode**:
+- Enter via BOOTSEL button (5 second hold) or auto-timeout (configurable)
+- Receive `MSG_PAIRING` from TX
+- Verify binding UID matches (from binding phrase)
+- Send `MSG_PAIRING_ACK` with RX device ID
+- Store TX device ID in EEPROM
+- Generate shared encryption key
+
+**Implementation**: `src/rx_main_sx128x.cpp:324-331`, `src/pairing.cpp`
+
+#### 3. CRSF Output (50Hz)
+
+**RC Channels**:
+- Map channels from 1000-2000µs to CRSF 11-bit format (172-1811)
+- Build `CRSF_FRAMETYPE_RC_CHANNELS_PACKED` frame
+- Queue packet to flight controller
+- 16 channels total: 8 active + 8 centered (992)
+
+**Frame Structure**:
+- Address: `CRSF_ADDRESS_FLIGHT_CONTROLLER` (0xC8)
+- Type: `CRSF_FRAMETYPE_RC_CHANNELS_PACKED` (0x16)
+- Payload: 22 bytes (16 channels × 11 bits, packed)
+- CRC8: Checksum
+
+**Implementation**: `src/rx_main_sx128x.cpp:389-437`
+
+#### 4. CRSF Input (Telemetry)
+
+**Battery Telemetry**:
+- Receive `CRSF_FRAMETYPE_BATTERY_SENSOR` (0x08) from FC
+- Parse voltage, current, capacity, remaining %
+- Store locally for radio transmission to TX
+
+**Link Statistics**:
+- Receive `CRSF_FRAMETYPE_LINK_STATISTICS` from FC
+- Parse uplink/downlink RSSI, LQ, SNR
+- Log periodically for debugging
+
+**Implementation**: `src/rx_main_sx128x.cpp:101-141`
+
+#### 5. Battery Telemetry Forwarding (5Hz)
+
+**Send to TX**:
+- Build `MSG_BATTERY` packet (5 bytes payload)
+- Voltage × 10 (2 bytes big-endian)
+- Current × 10 (2 bytes big-endian)
+- Remaining % (1 byte)
+- Send via SX1280 radio
+
+**Implementation**: `src/rx_main_sx128x.cpp:383-386`, `include/PacketHandler.h`
+
+#### 6. Status LED (WS2812)
+
+**LED Control**:
+- **Disconnected**: Dim red
+- **Connected**: Color controlled by channels 7 & 8
+  - Ch7 (1000-2000) → Hue (0-360°)
+  - Ch8 (1000-1500) → Saturation (0-100%)
+  - Ch8 (1500-2000) → Value/Brightness (0-100%)
+- Update rate: 20Hz (50ms intervals)
+
+**Implementation**: `src/rx_main_sx128x.cpp:584-647`
+
+#### 7. Connection State Machine
+
+**States** (same as TX):
+- **DISCONNECTED**: Waiting for pairing
+- **PAIRING**: Receiving pairing packets
+- **CONNECTING**: Waiting for SYNC or channel data
+- **CONNECTED**: Active link (receiving data or sync)
+- **LOST**: Connection timeout (no data or sync for 2 seconds)
+
+**Implementation**: `src/rx_main_sx128x.cpp:463-540`
+
+---
+
+## Security Layer
+
+**Source**: `include/Security.h`, `src/Security.cpp`
+
+Shared across TX and RX modules.
+
+### Key Features
+
+#### 1. Binding Phrase
+
+- Default: `"FPV_BIND_2024"` (configurable via build flag)
+- SHA-256 hash → 8-byte binding UID
+- Both TX and RX must use same phrase to pair
+
+#### 2. Device ID Generation
+
+- Unique 8-byte device ID per module
+- Generated from RP2040 unique chip ID
+- Stored in EEPROM after first boot
+
+#### 3. Pairing Key Derivation
+
+- Shared 16-byte encryption key
+- Derived during pairing handshake
+- Stored in EEPROM (address 0)
+- Used for AES-128 encryption and HMAC
+
+#### 4. Message Encryption
+
+- AES-128 CTR mode
+- Encrypts channel data (16 bytes)
+- Unique IV per packet (from sequence number)
+
+#### 5. Message Authentication
+
+- HMAC-SHA256 over entire frame
+- Truncated to 4 bytes for efficiency
+- Prevents tampering and replay attacks
+
+#### 6. Sequence Number Protection
+
+- 16-bit sequence number per packet
+- RX tracks last valid sequence
+- Reject packets with old/duplicate sequence numbers
+
+---
+
+## Protocol Layers
+
+**Source**: `include/Protocol.h`, `include/UARTProtocol.h`
+
+### Radio Protocol (SX1280)
+
+**Message Types**:
+- `MSG_CHANNELS` (0x01): Encrypted channel data
+- `MSG_BATTERY` (0x02): Battery telemetry
+- `MSG_PAIRING` (0x03): Pairing request
+- `MSG_PAIRING_ACK` (0x04): Pairing response
+- `MSG_SYNC` (0x05): Connection sync
+- `MSG_SYNC_ACK` (0x06): Sync acknowledgment
+
+**Packet Structure**:
+- Fixed 33-byte packets (SX1280 config)
+- Type byte (1 byte) + payload (up to 32 bytes)
+
+### UART Protocol (RC ↔ TX)
+
+**Message Types**:
+- `UART_MSG_CHANNELS` (0x01): 8 channels × 2 bytes
+- `UART_MSG_TELEMETRY` (0x02): RSSI, SNR, battery, LQ
+- `UART_MSG_STATUS` (0x03): Connection state, pairing, stats
+- `UART_MSG_ACK` (0x04): Command acknowledgment
+- `UART_MSG_ERROR` (0x05): Error code
+- `UART_MSG_PING` (0x06): Health check request
+- `UART_MSG_PONG` (0x07): Health check response
+- `UART_MSG_CMD_*` (0x10-0x13): Commands (pair, bond, restart, status)
+
+**Frame Structure**:
+- Header: 0x55 (sync byte)
+- Type: 1 byte
+- Length: 1 byte
+- Payload: variable (up to 64 bytes)
+- CRC8: 1 byte checksum
+
+---
+
+## Build Environments
+
+**Source**: `platformio.ini`
+
+The project includes multiple build environments:
+
+- **`rc-crsf`**: RC Board (RP2040/RP2350)
+- **`tx_sx128x`**: TX Module (RP2040 + SX1280)
+- **`rx_sx128x`**: RX Module (RP2040W + SX1280)
+- **`tx-ble`**: Legacy BLE TX (deprecated)
+- **`rx-ble`**: Legacy BLE RX (deprecated)
+
+**Build Commands**:
+```bash
+pio run -e rc-crsf -t upload       # Upload RC board
+pio run -e tx_sx128x -t upload     # Upload TX module
+pio run -e rx_sx128x -t upload     # Upload RX module
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Communication Flow" icon="arrows-left-right" href="/architecture/communication-flow">
+    Learn how data flows through the system from RC inputs to flight controller
+  </Card>
+  <Card title="System Overview" icon="sitemap" href="/architecture/overview">
+    High-level architecture and key features
+  </Card>
+</CardGroup>

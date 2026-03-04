@@ -1,0 +1,218 @@
+---
+title: TelemetryData
+description: Telemetry data structure for link quality and battery information
+---
+
+The `TelemetryData` structure is used to transmit telemetry information from the TX module back to the RC board via UART protocol.
+
+## Structure Definition
+
+```cpp
+struct TelemetryData {
+    int16_t rssi;          // dBm
+    float snr;             // dB
+    uint16_t rxBattMv;     // millivolts
+    uint8_t rxBattPct;     // percentage
+    uint8_t linkQuality;   // 0-100%
+} __attribute__((packed));
+```
+
+## Fields
+
+<ResponseField name="rssi" type="int16_t">
+  Received Signal Strength Indicator in dBm.
+  
+  - **Range**: Typically -120 to -30 dBm
+  - **Good signal**: Greater than -90 dBm
+  - **Weak signal**: Less than -100 dBm
+  
+  This value is read from the SX1280 radio module after receiving packets.
+</ResponseField>
+
+<ResponseField name="snr" type="float">
+  Signal-to-Noise Ratio in dB.
+  
+  - **Range**: Typically -20 to +15 dB
+  - **Good signal**: Greater than 5 dB
+  - **Marginal**: 0 to 5 dB
+  - **Poor**: Less than 0 dB
+  
+  Higher SNR values indicate cleaner signal reception.
+</ResponseField>
+
+<ResponseField name="rxBattMv" type="uint16_t">
+  RX module battery voltage in millivolts.
+  
+  - **Format**: Millivolts (e.g., 12600 = 12.6V)
+  - **Source**: CRSF battery telemetry from flight controller
+  - **Update rate**: 5Hz (200ms intervals)
+  
+  This value is forwarded from the RX module's CRSF telemetry input.
+</ResponseField>
+
+<ResponseField name="rxBattPct" type="uint8_t">
+  RX module battery percentage remaining.
+  
+  - **Range**: 0-100%
+  - **Source**: CRSF battery telemetry from flight controller
+  - **Update rate**: 5Hz (200ms intervals)
+</ResponseField>
+
+<ResponseField name="linkQuality" type="uint8_t">
+  Link quality percentage calculated from RSSI.
+  
+  - **Range**: 0-100%
+  - **Calculation**: Based on RSSI thresholds
+  - **100%**: RSSI greater than -50 dBm
+  - **0%**: RSSI less than -120 dBm
+</ResponseField>
+
+## Usage Example
+
+### TX Module (Sending Telemetry)
+
+```cpp
+#include "UARTProtocol.h"
+#include "SX128xLink.h"
+
+UARTProtocol uartProto(&Serial1);
+SX128xLink radio;
+
+void sendTelemetry(int16_t rssi, float snr, uint16_t rxBattMv, uint8_t rxBattPct) {
+    TelemetryData telemetry;
+    telemetry.rssi = rssi;
+    telemetry.snr = snr;
+    telemetry.rxBattMv = rxBattMv;
+    telemetry.rxBattPct = rxBattPct;
+    
+    // Calculate link quality from RSSI
+    if (rssi > -50) {
+        telemetry.linkQuality = 100;
+    } else if (rssi < -120) {
+        telemetry.linkQuality = 0;
+    } else {
+        // Linear interpolation between -120 and -50 dBm
+        telemetry.linkQuality = map(rssi, -120, -50, 0, 100);
+    }
+    
+    uartProto.sendTelemetry(&telemetry);
+}
+
+void loop() {
+    // After receiving radio packet
+    SX128xPacket packet;
+    if (radio.receive(packet)) {
+        // Extract battery telemetry from packet
+        uint16_t rxBattMv = extractBatteryVoltage(packet);
+        uint8_t rxBattPct = extractBatteryPercentage(packet);
+        
+        // Send telemetry to RC board
+        sendTelemetry(packet.rssi, packet.snr, rxBattMv, rxBattPct);
+    }
+}
+```
+
+### RC Board (Receiving Telemetry)
+
+```cpp
+#include "UARTProtocol.h"
+#include <Adafruit_SH110X.h>
+
+UARTProtocol uartProto(&Serial1);
+Adafruit_SH1106G display(128, 64, &Wire);
+
+void onTelemetryReceived(const TelemetryData* data) {
+    // Update display with telemetry
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    
+    // Signal strength
+    display.print("RSSI: ");
+    display.print(data->rssi);
+    display.println(" dBm");
+    
+    display.print("SNR: ");
+    display.print(data->snr, 1);
+    display.println(" dB");
+    
+    // Link quality bar
+    display.print("Link: ");
+    display.print(data->linkQuality);
+    display.println("%");
+    
+    // Battery
+    display.print("Batt: ");
+    display.print(data->rxBattMv / 1000.0, 2);
+    display.print("V (");
+    display.print(data->rxBattPct);
+    display.println("%)");
+    
+    display.display();
+}
+
+void setup() {
+    uartProto.begin(420000);
+    uartProto.setOnTelemetry(onTelemetryReceived);
+    display.begin();
+}
+
+void loop() {
+    uartProto.loop();
+}
+```
+
+## UART Transmission
+
+The `TelemetryData` structure is transmitted via UART protocol using message type `UART_MSG_TELEMETRY` (0x20):
+
+- **Frame format**: SYNC (0xA5) + LENGTH + TYPE (0x20) + PAYLOAD + CRC8
+- **Payload size**: 11 bytes (2 + 4 + 2 + 1 + 1 + 1)
+- **Update rate**: Varies based on radio packet reception and battery telemetry
+- **Direction**: TX module → RC board
+
+## Telemetry Sources
+
+### Link Quality (RSSI/SNR)
+
+Measured by the TX module after receiving radio packets from RX:
+
+```cpp
+SX128xPacket packet;
+if (radio.receive(packet)) {
+    telemetry.rssi = packet.rssi;  // From SX1280
+    telemetry.snr = packet.snr;    // From SX1280
+}
+```
+
+### Battery Information
+
+Received from the RX module via radio (MSG_BATTERY), which gets it from flight controller CRSF telemetry:
+
+```
+Flight Controller → RX (CRSF) → TX (Radio) → RC Board (UART)
+```
+
+## Link Quality Calculation
+
+```cpp
+uint8_t calculateLinkQuality(int16_t rssi) {
+    if (rssi > -50) return 100;
+    if (rssi < -120) return 0;
+    return map(rssi, -120, -50, 0, 100);
+}
+```
+
+| RSSI (dBm) | Link Quality | Signal Status |
+|------------|--------------|---------------|
+| Greater than -50 | 100% | Excellent |
+| -50 to -70 | 71-100% | Very Good |
+| -70 to -90 | 43-70% | Good |
+| -90 to -100 | 29-42% | Fair |
+| -100 to -120 | 0-28% | Poor |
+| Less than -120 | 0% | No Signal |
+
+## See Also
+
+- [UART Protocol](/api/uart-protocol) - Protocol for UART transmission
+- [UART Messages](/api/uart-messages) - UART message types
+- [StatusData](/api/status) - Connection and pairing status

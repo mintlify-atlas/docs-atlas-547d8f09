@@ -1,0 +1,342 @@
+---
+title: Hardware Requirements
+description: Complete list of required hardware for TX, RX, and RC board modules
+---
+
+This page lists all hardware components required to build a complete XLRS system.
+
+## System Overview
+
+A complete XLRS system consists of three modules:
+
+<CardGroup cols={3}>
+  <Card title="TX Module" icon="tower-broadcast">
+    Transmits radio signals to RX
+  </Card>
+  <Card title="RX Module" icon="satellite-dish">
+    Receives radio and outputs CRSF
+  </Card>
+  <Card title="RC Board" icon="gamepad">
+    Reads inputs and controls display
+  </Card>
+</CardGroup>
+
+## TX Module (Transmitter)
+
+The TX module receives channel data from the RC board via UART and transmits it over radio to the RX.
+
+### Required Components
+
+| Component | Specification | Notes |
+|-----------|--------------|-------|
+| Microcontroller | Raspberry Pi Pico (RP2040) | Standard Pico, not Pico W |
+| Radio Module | SX1280 with SPI interface | 2.4GHz LoRa module |
+| Antenna | 2.4GHz antenna (IPEX/U.FL) | Matched to SX1280 connector |
+| Power Supply | 3.3V or 5V via USB/VBUS | Can power from RC board or separate source |
+
+### Pin Connections
+
+#### SX1280 Radio Wiring
+
+| Signal | Pico Pin | Description |
+|--------|----------|-------------|
+| SPI SCK | GP18 | SPI Clock |
+| SPI MOSI | GP19 | SPI Data Out |
+| SPI MISO | GP16 | SPI Data In |
+| SPI CS | GP17 | Chip Select |
+| BUSY | GP20 | Radio Busy Signal |
+| DIO1 | GP21 | Data Interrupt |
+| RST | GP22 | Reset |
+| RXEN | GP14 | RX Enable (optional) |
+| TXEN | GP15 | TX Enable (optional) |
+| VCC | 3V3 | 3.3V Power |
+| GND | GND | Ground |
+
+#### UART Protocol (to RC Board)
+
+| Signal | Pico Pin | Description |
+|--------|----------|-------------|
+| UART TX | GP8 | Transmit to RC board |
+| UART RX | GP9 | Receive from RC board |
+| Baudrate | 420000 | High-speed UART |
+
+<Note>
+All pin assignments can be customized via build flags in `platformio.ini`. See the Configuration section for details.
+</Note>
+
+## RX Module (Receiver)
+
+The RX module receives radio signals from TX and outputs CRSF protocol to the flight controller.
+
+### Required Components
+
+| Component | Specification | Notes |
+|-----------|--------------|-------|
+| Microcontroller | Raspberry Pi Pico W (RP2040) | Pico W recommended for future WiFi features |
+| Radio Module | SX1280 with SPI interface | Same as TX module |
+| Antenna | 2.4GHz antenna (IPEX/U.FL) | Matched to SX1280 connector |
+| Power Supply | 3.3V or 5V from flight controller | Typically powered from FC 5V pad |
+
+### Pin Connections
+
+#### SX1280 Radio Wiring
+
+Identical to TX module (see above).
+
+#### CRSF Output (to Flight Controller)
+
+| Signal | Pico Pin | FC Connection | Description |
+|--------|----------|--------------|-------------|
+| CRSF TX | GP8 | FC CRSF RX | Channel data to flight controller |
+| CRSF RX | GP9 | FC CRSF TX | Telemetry from flight controller |
+| Baudrate | 420000 | 420000 | CRSF protocol speed |
+| GND | GND | FC GND | Common ground |
+| VCC | VBUS/VSYS | FC 5V | 5V power from flight controller |
+
+<Warning>
+Ensure the flight controller UART is configured for 420000 baud CRSF protocol. Most modern flight controllers support this with Betaflight or similar firmware.
+</Warning>
+
+## RC Board (Controller)
+
+The RC board reads analog inputs from joysticks and switches, displays telemetry on an OLED, and communicates with the TX module via UART.
+
+### Required Components
+
+| Component | Specification | Notes |
+|-----------|--------------|-------|
+| Microcontroller | Raspberry Pi Pico (RP2040) | Standard Pico |
+| OLED Display | SH1106G 128x64 (I2C) | I2C interface |
+| ADC Module | ADS1115 16-bit ADC (I2C) | For reading analog joysticks |
+| Joysticks | 2× 2-axis analog joysticks | Standard 10kΩ potentiometers |
+| Switches | 4× toggle switches | SPDT or 3-position switches |
+| Buttons | 2× momentary push buttons | For navigation |
+| Power Supply | 3.3V or 5V (battery/USB) | Depends on your RC enclosure design |
+
+### Component Details
+
+#### SH1106G OLED Display (I2C)
+
+- **Resolution**: 128x64 pixels
+- **Interface**: I2C (SCL, SDA)
+- **I2C Address**: Typically 0x3C or 0x3D
+- **Power**: 3.3V
+- **Displays**: Connection status, signal strength, channel values, battery telemetry
+
+#### ADS1115 16-bit ADC (I2C)
+
+- **Channels**: 4 single-ended or 2 differential
+- **Resolution**: 16-bit (provides smooth joystick input)
+- **Interface**: I2C (SCL, SDA)
+- **I2C Address**: Typically 0x48 (configurable via address pins)
+- **Power**: 3.3V or 5V
+- **Inputs**: Connected to joystick outputs
+
+#### Analog Joysticks
+
+- **Type**: 2-axis analog (X and Y outputs)
+- **Quantity**: 2 (total 4 analog channels)
+- **Resistance**: Typical 10kΩ potentiometers
+- **Voltage Range**: 0-3.3V (or 0-5V depending on ADC configuration)
+- **Mapping**: Channels 0-3 (Aileron, Elevator, Rudder, Throttle)
+
+#### Toggle Switches
+
+- **Quantity**: 4
+- **Type**: SPDT or 3-position
+- **Mapping**: Channels 4-7 (Aux1-Aux4)
+- **Voltage**: Logic level (3.3V)
+- **Connection**: Digital inputs to Pico GPIO pins
+
+#### Navigation Buttons
+
+- **Quantity**: 2
+- **Type**: Momentary push buttons
+- **Purpose**: Menu navigation, pairing control
+- **Connection**: Digital inputs with pull-up resistors
+
+### Pin Connections
+
+#### I2C Devices (Display + ADC)
+
+| Signal | Pico Pin | Connected To |
+|--------|----------|-------------|
+| I2C SDA | GP4 (default) | OLED SDA, ADS1115 SDA |
+| I2C SCL | GP5 (default) | OLED SCL, ADS1115 SCL |
+
+<Note>
+Multiple I2C devices share the same SDA/SCL bus. Ensure each device has a unique I2C address.
+</Note>
+
+#### UART to TX Module
+
+| Signal | Pico Pin | Description |
+|--------|----------|-------------|
+| UART TX | GP8 | To TX module RX |
+| UART RX | GP9 | From TX module TX |
+| Baudrate | 420000 | High-speed UART |
+
+#### Joysticks via ADS1115
+
+| Joystick | ADS1115 Channel | Function |
+|----------|----------------|----------|
+| Left X | A0 | Aileron (Channel 0) |
+| Left Y | A1 | Throttle (Channel 3) |
+| Right X | A2 | Rudder (Channel 2) |
+| Right Y | A3 | Elevator (Channel 1) |
+
+<Note>
+Channel mapping can be customized in the RC board firmware. The above is a typical AETR (Aileron, Elevator, Throttle, Rudder) configuration.
+</Note>
+
+#### Switches and Buttons
+
+Digital GPIO pins (specific pins depend on your RC board implementation):
+- 4× toggle switches for Aux channels
+- 2× navigation buttons
+
+## Additional Hardware
+
+### Recommended Accessories
+
+| Item | Purpose | Notes |
+|------|---------|-------|
+| USB Cables | Programming and debugging | USB-A to Micro-B for Pico |
+| Jumper Wires | Prototyping connections | Dupont wires or custom cables |
+| Soldering Iron | Permanent connections | For reliable wiring |
+| Heat Shrink Tubing | Wire protection | Prevents shorts |
+| Enclosures | Housing for modules | 3D printed or off-the-shelf |
+| Antennas | 2.4GHz dipole/whip | Matched to SX1280 impedance |
+
+### Power Considerations
+
+#### TX Module
+- Can be powered from RC board's power supply
+- Typical consumption: 50-100mA @ 3.3V
+- Add decoupling capacitors near SX1280 VCC
+
+#### RX Module
+- Typically powered from flight controller 5V pad
+- Typical consumption: 50-100mA
+- Ensure flight controller can supply sufficient current
+
+#### RC Board
+- Battery-powered (LiPo with voltage regulator) or USB
+- Must supply power to OLED, ADC, and optionally TX module
+- Typical total consumption: 150-300mA @ 3.3V/5V
+
+<Warning>
+Always use appropriate voltage regulation for 3.3V components. The RP2040 GPIO is not 5V tolerant.
+</Warning>
+
+## Sourcing Components
+
+### Raspberry Pi Pico Boards
+- **Raspberry Pi Pico**: ~$4 USD
+- **Raspberry Pi Pico W**: ~$6 USD
+- Available from: Adafruit, SparkFun, Digi-Key, Mouser, AliExpress
+
+### SX1280 Radio Modules
+- Various form factors available (breakout boards, modules)
+- Ensure SPI interface is exposed
+- Typical cost: $5-15 USD
+- Available from: AliExpress, eBay, specialized RF suppliers
+
+<Note>
+Verify the SX1280 module includes an antenna connector (IPEX/U.FL). Some modules require external antennas.
+</Note>
+
+### Displays and Sensors
+- **SH1106G OLED**: ~$3-8 USD (Amazon, AliExpress, Adafruit)
+- **ADS1115**: ~$5-10 USD (Adafruit, SparkFun, AliExpress)
+- **Joysticks**: ~$1-3 USD each (Amazon, AliExpress)
+- **Switches**: ~$0.50-2 USD each (Amazon, AliExpress)
+
+## Build Environments
+
+The firmware supports multiple build environments in `platformio.ini`:
+
+| Environment | Board | Purpose |
+|------------|-------|----------|
+| `tx_sx128x` | Raspberry Pi Pico | TX module (SX1280 radio, UART) |
+| `rx_sx128x` | Raspberry Pi Pico W | RX module (SX1280 radio, CRSF) |
+| `rc-crsf` | Raspberry Pi Pico | RC board (inputs, display, UART) |
+| `rc-rp2350` | Raspberry Pi Pico 2 | RC board (RP2350 variant with internal ADC) |
+| `tx-ble` | Raspberry Pi Pico | Legacy BLE TX (deprecated) |
+| `rx-ble` | Raspberry Pi Pico | Legacy BLE RX (deprecated) |
+
+<Note>
+The `rc-rp2350` environment uses the internal ADC of the RP2350 chip, eliminating the need for an external ADS1115 module.
+</Note>
+
+## Wiring Diagrams
+
+### TX Module Wiring Summary
+```
+Raspberry Pi Pico → SX1280 Radio Module
+  GP18 → SCK
+  GP19 → MOSI
+  GP16 → MISO
+  GP17 → CS
+  GP20 → BUSY
+  GP21 → DIO1
+  GP22 → RST
+  GP14 → RXEN (optional)
+  GP15 → TXEN (optional)
+  3V3  → VCC
+  GND  → GND
+
+Raspberry Pi Pico → RC Board (UART)
+  GP8 → RC Board GP9 (RX)
+  GP9 → RC Board GP8 (TX)
+  GND → GND
+```
+
+### RX Module Wiring Summary
+```
+Raspberry Pi Pico W → SX1280 Radio Module
+  (Same as TX module)
+
+Raspberry Pi Pico W → Flight Controller (CRSF)
+  GP8 → FC CRSF RX
+  GP9 → FC CRSF TX
+  GND → FC GND
+  VBUS → FC 5V
+```
+
+### RC Board Wiring Summary
+```
+Raspberry Pi Pico → SH1106G OLED (I2C)
+  GP4 → SDA
+  GP5 → SCL
+  3V3 → VCC
+  GND → GND
+
+Raspberry Pi Pico → ADS1115 ADC (I2C)
+  GP4 → SDA
+  GP5 → SCL
+  3V3 → VDD
+  GND → GND
+
+ADS1115 → Joysticks
+  A0 → Left Joystick X
+  A1 → Left Joystick Y
+  A2 → Right Joystick X
+  A3 → Right Joystick Y
+
+Raspberry Pi Pico → TX Module (UART)
+  GP8 → TX Module GP9 (RX)
+  GP9 → TX Module GP8 (TX)
+  GND → GND
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Follow the step-by-step guide to build and flash your XLRS system
+  </Card>
+  <Card title="Configuration" icon="sliders" href="/configuration">
+    Learn how to customize radio settings and pin configurations
+  </Card>
+</CardGroup>

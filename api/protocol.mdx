@@ -1,0 +1,530 @@
+---
+title: 'Protocol'
+description: 'Radio packet encoding/decoding and pairing functions'
+---
+
+## Overview
+
+The Protocol library provides static functions for encoding and decoding secure radio packets, along with pairing and synchronization functionality. It integrates with the Security class for encryption and authentication.
+
+## Protocol Class
+
+Location: `lib/Protocol/Protocol.h`
+
+```cpp
+class Protocol {
+public:
+    // Frame encoding/decoding
+    static void encodeFrame(uint16_t channels[NUM_CHANNELS], uint16_t sequence,
+                           Security* security, const uint8_t* deviceId, 
+                           uint8_t* frame);
+    
+    static bool decodeFrame(const uint8_t* frame, uint16_t channels[NUM_CHANNELS],
+                           uint16_t* sequence, Security* security, 
+                           uint16_t* lastSequence, const uint8_t* expectedDeviceId);
+    
+    static bool validateFrame(const uint8_t* frame);
+    
+    // Discovery protocol
+    static void createDiscoveryPacket(const IPAddress& ip, char* buffer, 
+                                     size_t bufferSize);
+    static bool parseDiscoveryPacket(const char* packet, IPAddress& ip);
+    
+    // Sync packets
+    static void createSyncPacket(uint16_t syncSeq, uint32_t timestamp,
+                                Security* security, const uint8_t* deviceId,
+                                uint8_t* packet, size_t* packetLen);
+    
+    static bool parseSyncPacket(const uint8_t* packet, size_t packetLen,
+                               uint16_t* syncSeq, uint32_t* timestamp,
+                               Security* security, uint8_t* sourceDeviceId);
+    
+    static void createSyncAck(uint16_t syncSeq, uint32_t timestamp,
+                             Security* security, const uint8_t* deviceId,
+                             uint8_t* packet, size_t* packetLen);
+    
+    static bool parseSyncAck(const uint8_t* packet, size_t packetLen,
+                            uint16_t* syncSeq, uint32_t* timestamp,
+                            Security* security, uint8_t* sourceDeviceId);
+};
+```
+
+## Pairing Class
+
+Location: `lib/Protocol/pairing.h`
+
+```cpp
+class Pairing {
+public:
+    // TX side: Send pairing key packet
+    static void sendPairingKey(SX128xLink* radio, Security* security,
+                              const uint8_t* txDeviceId, bool* pairingMode,
+                              unsigned long* lastPairingSend);
+    
+    // RX side: Enter/exit pairing mode
+    static void enterPairingMode(bool* pairingMode, 
+                                unsigned long* pairingModeStartTime);
+    static void exitPairingMode(bool* pairingMode, bool success);
+    
+    // RX side: BOOTSEL button handling
+    static bool getBootselButton();
+    static void checkBootselButton(bool* pairingMode,
+                                  unsigned long* pairingModeStartTime,
+                                  bool isPaired);
+    static void updatePairingMode(bool* pairingMode,
+                                 unsigned long pairingModeStartTime);
+    
+    // RX side: Handle pairing packet
+    static bool handlePairingPacket(const uint8_t* payload, size_t payloadLen,
+                                   Security* security, SX128xLink* radio,
+                                   const uint8_t* rxDeviceId,
+                                   uint8_t* pairedTxDeviceId,
+                                   bool* hasPairedTxId, bool* pairingMode);
+    
+    // TX side: Handle pairing ACK
+    static bool handlePairingAck(const uint8_t* payload, size_t payloadLen,
+                                Security* security, uint8_t* pairedRxDeviceId,
+                                bool* hasPairedRxId, bool* pairingMode);
+};
+```
+
+## Constants
+
+### Channel Configuration
+
+```cpp
+#define NUM_CHANNELS 8
+#define CHANNEL_DATA_SIZE (NUM_CHANNELS * 2)  // 16 bytes
+#define CHANNEL_MIN 1000
+#define CHANNEL_MAX 2000
+#define CHANNEL_CENTER 1500
+```
+
+### Frame Structure
+
+```cpp
+#define SEQUENCE_SIZE 2       // Sequence number
+#define DEVICE_ID_SIZE 8      // Device identifier
+#define HMAC_SIZE 4           // Truncated HMAC
+#define FRAME_SIZE (DEVICE_ID_SIZE + CHANNEL_DATA_SIZE + SEQUENCE_SIZE + HMAC_SIZE)  // 30 bytes
+```
+
+### Connection States
+
+```cpp
+enum ConnectionState {
+    STATE_DISCONNECTED = 0,
+    STATE_PAIRING = 1,
+    STATE_CONNECTING = 2,
+    STATE_CONNECTED = 3,
+    STATE_LOST = 4
+};
+```
+
+### Radio Message Types
+
+```cpp
+enum RadioMsgType : uint8_t {
+    MSG_CHANNELS = 0x01,        // Channel data packet
+    MSG_BATTERY  = 0x02,        // Battery telemetry
+    MSG_PAIRING  = 0x03,        // Pairing request
+    MSG_PAIRING_ACK = 0x04,     // Pairing acknowledgment
+    MSG_SYNC     = 0x05,        // Sync packet
+    MSG_SYNC_ACK = 0x06,        // Sync acknowledgment
+    MSG_CONNECTION_STATUS = 0x07
+};
+```
+
+## Protocol Methods
+
+### encodeFrame()
+
+Encodes channel values into a secure binary frame with encryption and HMAC.
+
+```cpp
+static void encodeFrame(uint16_t channels[NUM_CHANNELS], uint16_t sequence,
+                       Security* security, const uint8_t* deviceId, 
+                       uint8_t* frame);
+```
+
+<ParamField path="channels" type="uint16_t[8]">
+  Array of 8 channel values (1000-2000 µs)
+</ParamField>
+
+<ParamField path="sequence" type="uint16_t">
+  Packet sequence number for replay protection
+</ParamField>
+
+<ParamField path="security" type="Security*">
+  Pointer to Security instance for encryption/HMAC
+</ParamField>
+
+<ParamField path="deviceId" type="const uint8_t*">
+  8-byte device ID of sender
+</ParamField>
+
+<ParamField path="frame" type="uint8_t*">
+  Output buffer (must be at least FRAME_SIZE = 30 bytes)
+</ParamField>
+
+**Example:**
+
+```cpp
+uint16_t channels[8] = {1500, 1500, 1000, 1500, 1500, 1500, 1500, 1500};
+uint16_t sequence = 42;
+uint8_t frame[FRAME_SIZE];
+
+Protocol::encodeFrame(channels, sequence, &security, txDeviceId, frame);
+```
+
+### decodeFrame()
+
+Decodes and validates a received frame, verifying device ID, HMAC, and decrypting channel data.
+
+```cpp
+static bool decodeFrame(const uint8_t* frame, uint16_t channels[NUM_CHANNELS],
+                       uint16_t* sequence, Security* security,
+                       uint16_t* lastSequence, const uint8_t* expectedDeviceId);
+```
+
+<ParamField path="frame" type="const uint8_t*">
+  Received frame data (FRAME_SIZE bytes)
+</ParamField>
+
+<ParamField path="channels" type="uint16_t[8]">
+  Output array for decoded channel values
+</ParamField>
+
+<ParamField path="sequence" type="uint16_t*">
+  Output for packet sequence number
+</ParamField>
+
+<ParamField path="security" type="Security*">
+  Pointer to Security instance for decryption/HMAC verification
+</ParamField>
+
+<ParamField path="lastSequence" type="uint16_t*">
+  Pointer to last received sequence (for replay detection)
+</ParamField>
+
+<ParamField path="expectedDeviceId" type="const uint8_t*">
+  8-byte device ID we expect to receive from
+</ParamField>
+
+<ParamField path="return" type="bool">
+  Returns `true` if frame is valid, device ID matches, HMAC verified, and decryption successful
+</ParamField>
+
+**Example:**
+
+From `src/rx_main_sx128x.cpp:287`:
+
+```cpp
+if (payload_len >= FRAME_SIZE) {
+    uint16_t sequence = 0;
+    if (Protocol::decodeFrame(payload, channels, &sequence, 
+                              &security, &lastSequence, pairedTxDeviceId)) {
+        lastDataReceived = millis();
+        Serial.print("Channels received, seq: ");
+        Serial.println(sequence);
+    } else {
+        Serial.println("Invalid frame (device ID/HMAC/decrypt failed)");
+    }
+}
+```
+
+### createSyncPacket() / parseSyncPacket()
+
+Sync packets establish timing between TX and RX for connection handshake.
+
+```cpp
+static void createSyncPacket(uint16_t syncSeq, uint32_t timestamp,
+                            Security* security, const uint8_t* deviceId,
+                            uint8_t* packet, size_t* packetLen);
+
+static bool parseSyncPacket(const uint8_t* packet, size_t packetLen,
+                           uint16_t* syncSeq, uint32_t* timestamp,
+                           Security* security, uint8_t* sourceDeviceId);
+```
+
+**Example:**
+
+```cpp
+// TX side: Send sync packet
+uint8_t packet[64];
+size_t packetLen;
+Protocol::createSyncPacket(syncSequence, millis(), &security, 
+                          txDeviceId, packet, &packetLen);
+radio.send(packet, packetLen);
+
+// RX side: Parse sync packet
+uint16_t syncSeq;
+uint32_t timestamp;
+uint8_t sourceDeviceId[DEVICE_ID_SIZE];
+if (Protocol::parseSyncPacket(payload, payload_len, &syncSeq, 
+                             &timestamp, &security, sourceDeviceId)) {
+    lastSyncReceived = millis();
+}
+```
+
+## Pairing Methods
+
+### sendPairingKey()
+
+Transmitter sends pairing packet with binding UID.
+
+```cpp
+static void sendPairingKey(SX128xLink* radio, Security* security,
+                          const uint8_t* txDeviceId, bool* pairingMode,
+                          unsigned long* lastPairingSend);
+```
+
+<ParamField path="radio" type="SX128xLink*">
+  Radio instance for transmission
+</ParamField>
+
+<ParamField path="security" type="Security*">
+  Security instance with pairing key and binding UID
+</ParamField>
+
+<ParamField path="txDeviceId" type="const uint8_t*">
+  8-byte TX device ID
+</ParamField>
+
+<ParamField path="pairingMode" type="bool*">
+  Pointer to pairing mode flag
+</ParamField>
+
+<ParamField path="lastPairingSend" type="unsigned long*">
+  Pointer to timestamp of last pairing send
+</ParamField>
+
+**Example:**
+
+From `src/tx_main_sx128x.cpp:206`:
+
+```cpp
+if (pairingMode) {
+    Pairing::sendPairingKey(&radio, &security, txDeviceId, 
+                           &pairingMode, &lastPairingSend);
+}
+```
+
+### handlePairingPacket()
+
+Receiver processes pairing packet from TX and sends ACK.
+
+```cpp
+static bool handlePairingPacket(const uint8_t* payload, size_t payloadLen,
+                               Security* security, SX128xLink* radio,
+                               const uint8_t* rxDeviceId,
+                               uint8_t* pairedTxDeviceId,
+                               bool* hasPairedTxId, bool* pairingMode);
+```
+
+<ParamField path="return" type="bool">
+  Returns `true` if pairing successful
+</ParamField>
+
+**Example:**
+
+From `src/rx_main_sx128x.cpp:324`:
+
+```cpp
+case MSG_PAIRING:
+    if (Pairing::handlePairingPacket(payload, payload_len, &security, &radio,
+                                     rxDeviceId, pairedTxDeviceId, 
+                                     &hasPairedTxId, &pairingMode)) {
+        connectionState = STATE_CONNECTING;
+        Serial.println("Pairing successful!");
+    }
+    break;
+```
+
+### checkBootselButton()
+
+Checks if BOOTSEL button is held to enter pairing mode (RX side).
+
+```cpp
+static void checkBootselButton(bool* pairingMode,
+                              unsigned long* pairingModeStartTime,
+                              bool isPaired);
+```
+
+<ParamField path="pairingMode" type="bool*">
+  Pointer to pairing mode flag
+</ParamField>
+
+<ParamField path="pairingModeStartTime" type="unsigned long*">
+  Pointer to timestamp when pairing mode started
+</ParamField>
+
+<ParamField path="isPaired" type="bool">
+  Current pairing status
+</ParamField>
+
+**Example:**
+
+From `src/rx_main_sx128x.cpp:247`:
+
+```cpp
+// Check for BOOTSEL button press (5 second hold)
+Pairing::checkBootselButton(&pairingMode, &pairingModeStartTime, hasPairedTxId);
+Pairing::updatePairingMode(&pairingMode, pairingModeStartTime);
+```
+
+## Frame Format
+
+Channel data frame (30 bytes total):
+
+```
+[Device ID (8)][Channel Data Encrypted (16)][Sequence (2)][HMAC (4)]
+```
+
+- **Device ID:** 8-byte sender device identifier
+- **Channel Data:** 16 bytes (8 channels × 2 bytes), AES-128 encrypted
+- **Sequence:** 2-byte packet sequence number
+- **HMAC:** 4-byte truncated HMAC-SHA256
+
+## Pairing Process
+
+### Transmitter Side
+
+1. Enter pairing mode (automatically if not paired)
+2. Send `MSG_PAIRING` packets with binding UID and pairing key
+3. Wait for `MSG_PAIRING_ACK` from receiver
+4. Store RX device ID and exit pairing mode
+
+### Receiver Side
+
+1. Hold BOOTSEL button for 5 seconds to enter pairing mode
+2. Listen for `MSG_PAIRING` packets
+3. Verify binding UID matches
+4. Store TX device ID and pairing key
+5. Send `MSG_PAIRING_ACK`
+6. Exit pairing mode
+
+## Pairing Constants
+
+```cpp
+#define PAIRING_MODE_TIMEOUT_MS 60000    // 60 seconds pairing window
+#define BOOTSEL_HOLD_TIME_MS 5000        // 5 seconds to enter pairing
+#define PAIRING_SCAN_INTERVAL_MS 500     // Pairing packet rate
+```
+
+## Complete Usage Example
+
+### Transmitter
+
+From `src/tx_main_sx128x.cpp`:
+
+```cpp
+Security security;
+SX128xLink radio;
+uint8_t txDeviceId[DEVICE_ID_SIZE];
+uint8_t pairedRxDeviceId[DEVICE_ID_SIZE];
+bool hasPairedRxId = false;
+bool pairingMode = false;
+uint16_t sequenceNumber = 0;
+
+void setup() {
+    security.begin();
+    security.getDeviceId(txDeviceId);
+    
+    if (security.getPairedDeviceId(pairedRxDeviceId)) {
+        hasPairedRxId = true;
+        Serial.println("Already paired");
+    } else {
+        pairingMode = true;
+        Serial.println("Entering pairing mode");
+    }
+    
+    radio.begin();
+}
+
+void loop() {
+    // Handle pairing
+    if (pairingMode) {
+        Pairing::sendPairingKey(&radio, &security, txDeviceId,
+                               &pairingMode, &lastPairingSend);
+    }
+    
+    // Send channel data when paired
+    if (hasPairedRxId && !pairingMode) {
+        uint8_t frame[FRAME_SIZE];
+        Protocol::encodeFrame(channels, sequenceNumber++, 
+                             &security, txDeviceId, frame);
+        
+        uint8_t packet[FRAME_SIZE + 1];
+        packet[0] = MSG_CHANNELS;
+        memcpy(packet + 1, frame, FRAME_SIZE);
+        radio.send(packet, FRAME_SIZE + 1);
+    }
+}
+```
+
+### Receiver
+
+From `src/rx_main_sx128x.cpp`:
+
+```cpp
+Security security;
+SX128xLink radio;
+uint8_t rxDeviceId[DEVICE_ID_SIZE];
+uint8_t pairedTxDeviceId[DEVICE_ID_SIZE];
+bool hasPairedTxId = false;
+bool pairingMode = false;
+uint16_t lastSequence = 0;
+uint16_t channels[8];
+
+void setup() {
+    security.begin();
+    security.getDeviceId(rxDeviceId);
+    
+    if (security.getPairedDeviceId(pairedTxDeviceId)) {
+        hasPairedTxId = true;
+        Serial.println("Already paired");
+    }
+    
+    radio.begin();
+}
+
+void loop() {
+    // Check for pairing button
+    Pairing::checkBootselButton(&pairingMode, &pairingModeStartTime, 
+                               hasPairedTxId);
+    
+    // Receive packets
+    SX128xPacket pkt;
+    if (radio.receive(pkt) && pkt.length >= 1) {
+        uint8_t type = pkt.data[0];
+        const uint8_t* payload = pkt.data + 1;
+        size_t payload_len = pkt.length - 1;
+        
+        switch (type) {
+            case MSG_CHANNELS:
+                if (hasPairedTxId && payload_len >= FRAME_SIZE) {
+                    uint16_t sequence;
+                    if (Protocol::decodeFrame(payload, channels, &sequence,
+                                             &security, &lastSequence,
+                                             pairedTxDeviceId)) {
+                        // Channels received successfully
+                    }
+                }
+                break;
+                
+            case MSG_PAIRING:
+                Pairing::handlePairingPacket(payload, payload_len, &security,
+                                            &radio, rxDeviceId, pairedTxDeviceId,
+                                            &hasPairedTxId, &pairingMode);
+                break;
+        }
+    }
+}
+```
+
+## See Also
+
+- [Security](/api/security) - Encryption and authentication
+- [SX128xLink](/api/sx128x-link) - Radio communication
+- [UARTProtocol](/api/uart-protocol) - Serial communication
